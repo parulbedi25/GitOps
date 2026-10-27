@@ -1,0 +1,68 @@
+{{- if .Values.migrations.enabled }}
+{{- $fullname := include "shopstack.fullname" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ default (printf "%s-migrate" $fullname) .Values.migrations.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+  annotations:
+    # PreSync runs before the Rollout: the schema is always ahead of the code
+    # that expects it, never behind.
+    argocd.argoproj.io/hook: {{ .Values.migrations.hook }}
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "shopstack.selectorLabels" . | nindent 8 }}
+        shopstack.io/component: migration
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "shopstack.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "shopstack.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.migrations.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.migrations.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          envFrom:
+            {{- if .Values.config }}
+            - configMapRef:
+                name: {{ include "shopstack.configMapName" . }}
+            {{- end }}
+            {{- if and .Values.secrets.enabled .Values.secrets.data }}
+            - secretRef:
+                name: {{ include "shopstack.secretName" . }}
+                optional: {{ .Values.secrets.optional }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

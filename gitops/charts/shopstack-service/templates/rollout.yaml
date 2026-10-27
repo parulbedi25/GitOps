@@ -1,0 +1,90 @@
+{{- if eq .Values.workload.kind "Rollout" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "shopstack.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+  {{- with .Values.workload.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.workload.revisionHistoryLimit }}
+  minReadySeconds: {{ .Values.workload.minReadySeconds }}
+  progressDeadlineSeconds: {{ .Values.workload.progressDeadlineSeconds }}
+  selector:
+    matchLabels:
+      {{- include "shopstack.selectorLabels" . | nindent 6 }}
+  strategy:
+    {{- if eq .Values.rollout.strategy "blueGreen" }}
+    blueGreen:
+      activeService: {{ include "shopstack.fullname" . }}
+      previewService: {{ include "shopstack.canaryServiceName" . }}
+      autoPromotionEnabled: {{ .Values.rollout.blueGreen.autoPromotionEnabled }}
+      scaleDownDelaySeconds: {{ .Values.rollout.blueGreen.scaleDownDelaySeconds }}
+    {{- else }}
+    canary:
+      # Argo Rollouts flips these Services' selectors as the release progresses:
+      # `stableService` always points at the last known-good ReplicaSet,
+      # `canaryService` at the new one.
+      stableService: {{ include "shopstack.fullname" . }}
+      canaryService: {{ include "shopstack.canaryServiceName" . }}
+      {{- $nginx := .Values.rollout.canary.trafficRouting.nginx }}
+      {{- if $nginx.enabled }}
+      trafficRouting:
+        nginx:
+          stableIngress: {{ default (include "shopstack.fullname" .) $nginx.stableIngress }}
+          annotationPrefix: {{ $nginx.annotationPrefix }}
+          {{- with $nginx.additionalIngressAnnotations }}
+          additionalIngressAnnotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
+      maxSurge: {{ .Values.rollout.canary.maxSurge }}
+      maxUnavailable: {{ .Values.rollout.canary.maxUnavailable }}
+      steps:
+        {{- range .Values.rollout.canary.steps }}
+        {{- if hasKey . "analysis" }}
+        - analysis:
+            templates:
+              {{- range .analysis.templates }}
+              - templateName: {{ .templateName | replace "__SUCCESS_RATE__" (printf "%s-canary" (include "shopstack.fullname" $)) }}
+              {{- end }}
+        {{- else }}
+        {{- toYaml (list .) | nindent 8 }}
+        {{- end }}
+        {{- end }}
+      {{- if .Values.rollout.canary.analysis.enabled }}
+      analysis:
+        templates:
+          - templateName: {{ include "shopstack.fullname" . }}-canary
+        startingStep: {{ .Values.rollout.canary.analysis.startingStep }}
+        args:
+          - name: service
+            value: {{ include "shopstack.fullname" . }}
+          - name: namespace
+            value: {{ .Release.Namespace }}
+          # When canaryOnly is true the queries read the canary ServiceMonitor,
+          # so the gate evaluates the new pods alone instead of a blend of
+          # stable + canary traffic (which hides small regressions).
+          - name: track
+            value: {{ ternary "canary" "all" .Values.analysis.canaryOnly | quote }}
+      {{- end }}
+    {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "shopstack.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- include "shopstack.podAnnotations" . | nindent 8 }}
+    spec:
+      {{- include "shopstack.podSpec" . | nindent 6 }}
+{{- end }}

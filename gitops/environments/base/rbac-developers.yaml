@@ -1,0 +1,36 @@
+# Humans get read access plus the two operations that actually unblock an
+# incident (logs and port-forward). Deploys never come from a human's kubectl —
+# they come from Git — so `edit` is deliberately not granted.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shopstack-developer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints", "events", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/port-forward", "pods/exec"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts", "rollouts/status", "analysisruns", "analysistemplates"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: shopstack-developer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shopstack-developer
+subjects:
+  - kind: Group
+    name: shopstack:developers
+    apiGroup: rbac.authorization.k8s.io

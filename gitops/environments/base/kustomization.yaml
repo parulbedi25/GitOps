@@ -1,0 +1,20 @@
+# Namespace-level guard rails shared by every ShopStack environment.
+#
+# This base is composed by gitops/environments/<env> overlays, which add the
+# Namespace object itself, tune the quotas and label everything with the
+# environment name. Nothing here is application specific.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - resource-quota.yaml
+  - limit-range.yaml
+  - network-policy-default-deny.yaml
+  - network-policy-allow-monitoring.yaml
+  - rbac-developers.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: shopstack
+      shopstack.io/managed-by: gitops
+    includeSelectors: false

@@ -1,0 +1,41 @@
+# The QA cluster — a full, independent stack. Same charts, same policies
+# (audit mode), separate namespaces, separate Prometheus.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - ../base
+
+patches:
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: shopstack-environment
+    patch: |-
+      - op: replace
+        path: /spec/source/path
+        value: gitops/environments/qa
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: shopstack-security-policies
+    patch: |-
+      - op: replace
+        path: /spec/source/path
+        value: security/policies/overlays/qa
+  - target:
+      group: argoproj.io
+      kind: ApplicationSet
+      name: shopstack-services
+    patch: |-
+      - op: replace
+        path: /spec/generators/0/git/directories/0/path
+        value: gitops/apps/overlays/qa/*
+
+labels:
+  - pairs:
+      shopstack.io/managed-by: gitops
+      shopstack.io/cluster: shopstack-qa
+    includeSelectors: false

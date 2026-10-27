@@ -1,0 +1,13 @@
+{{- if .Values.monitoring.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "shopstack.fullname" . }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+    {{- toYaml .Values.monitoring.dashboard.labels | nindent 4 }}
+data:
+  {{ include "shopstack.fullname" . }}.json: |-
+    {{- .Files.Get "dashboards/service.json" | nindent 4 }}
+{{- end }}

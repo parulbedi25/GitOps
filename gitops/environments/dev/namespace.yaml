@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shopstack-dev
+  labels:
+    # Pod Security Admission: every ShopStack workload satisfies the restricted
+    # profile (non-root, no privilege escalation, seccomp, dropped caps). Kyverno
+    # enforces the same rules at admission time — defence in depth.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    shopstack.io/environment: dev
+    shopstack.io/managed-by: gitops
+  annotations:
+    shopstack.io/owner: platform-team@shopstack.example
+    shopstack.io/description: Development environment — auto-synced from main on every merge.

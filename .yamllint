@@ -1,0 +1,31 @@
+# yamllint — pragmatic rules for a Kubernetes/GitOps repository.
+extends: default
+
+ignore: |
+  node_modules/
+  .git/
+  charts/
+  **/charts/*.tgz
+
+rules:
+  # Kubernetes manifests legitimately exceed 80 columns (long PromQL, annotations).
+  line-length:
+    max: 200
+    level: warning
+  # Generated Kubernetes YAML uses true/false, never yes/no, but we do not want to
+  # argue about it: truthiness caused enough outages already.
+  truthy: disable
+  comments:
+    min-spaces-from-content: 1
+    require-starting-space: true
+  comments-indentation: disable
+  document-start: disable
+  indentation:
+    spaces: consistent
+    indent-sequences: whatever
+    check-multi-line-strings: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true

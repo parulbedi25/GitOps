@@ -1,0 +1,49 @@
+# ingress-nginx — the only way into the cluster.
+controller:
+  replicaCount: 2
+  ingressClassResource:
+    name: nginx
+    enabled: true
+    default: true
+  service:
+    # kind exposes this through `extraPortMappings` on the control-plane node.
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+  config:
+    use-forwarded-headers: "true"
+    enable-real-ip: "true"
+    proxy-body-size: "2m"
+    proxy-connect-timeout: "5"
+    proxy-read-timeout: "60"
+    # Do not let arbitrary Ingress annotations execute nginx snippets: they are a
+    # remote-code-execution vector on the ingress controller (CVE-2023-5044 class).
+    allow-snippet-annotations: "false"
+    annotations-risk-level: "Critical"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      # Declared in gitops/platform/observability/servicemonitors.yaml instead:
+      # the prometheus-operator CRDs only exist once the observability app syncs.
+      enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  podLabels:
+    shopstack.io/tier: platform
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+  admissionWebhooks:
+    enabled: true
+    patch:
+      enabled: true
+  defaultBackend:
+    enabled: true

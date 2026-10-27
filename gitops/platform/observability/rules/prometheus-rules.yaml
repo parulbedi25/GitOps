@@ -1,0 +1,364 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ShopStack alerting + recording rules.
+#
+# Principles:
+#   * every alert is a symptom a customer can feel, not a cause;
+#   * every alert carries an owner (`team`), a severity, a runbook and a dashboard;
+#   * `for:` is long enough that a deploy cannot page anyone, short enough that a
+#     real incident pages before the error budget is gone.
+#
+# Metric names come from packages/telemetry (the contract every service shares):
+#   shopstack_http_requests_total{service,namespace,route,method,status,status_class,track}
+#   shopstack_http_request_duration_seconds_bucket{...}
+# The `track` label is added by the ServiceMonitor relabelling in the app chart,
+# so canary and stable series are separable during a rollout.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shopstack-slo
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: shopstack
+    shopstack.io/managed-by: gitops
+    release: kube-prometheus-stack
+spec:
+  groups:
+    # ── Recording rules ─────────────────────────────────────────────────────
+    # Alert expressions stay one-liners because these do the arithmetic once.
+    - name: shopstack.recording
+      interval: 30s
+      rules:
+        - record: shopstack:http_requests:rate5m
+          expr: sum by (namespace, service) (rate(shopstack_http_requests_total[5m]))
+
+        - record: shopstack:http_errors:rate5m
+          expr: sum by (namespace, service) (rate(shopstack_http_requests_total{status_class="5xx"}[5m]))
+
+        - record: shopstack:http_error_ratio:ratio5m
+          expr: |
+            shopstack:http_errors:rate5m
+              /
+            clamp_min(shopstack:http_requests:rate5m, 0.001)
+
+        # Availability against the 99.9% objective over a 30-day window: long
+        # enough that a five-minute blip is not an incident, short enough to be
+        # actionable in the same sprint.
+        - record: shopstack:slo_availability:ratio30d
+          expr: |
+            1 - (
+              sum by (namespace, service) (rate(shopstack_http_requests_total{status_class="5xx"}[30d]))
+                /
+              clamp_min(sum by (namespace, service) (rate(shopstack_http_requests_total[30d])), 0.001)
+            )
+
+        - record: shopstack:slo_error_budget_remaining:ratio
+          expr: clamp_max((shopstack:slo_availability:ratio30d - 0.999) / (1 - 0.999), 1)
+
+        - record: shopstack:http_latency_p95:seconds5m
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (namespace, service, le) (rate(shopstack_http_request_duration_seconds_bucket[5m]))
+            )
+
+        - record: shopstack:http_latency_p99:seconds5m
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum by (namespace, service, le) (rate(shopstack_http_request_duration_seconds_bucket[5m]))
+            )
+
+        # Canary health, split by track. This is the same signal the
+        # AnalysisTemplate evaluates, which makes "dashboard showed it" and
+        # "rollout aborted" the same fact.
+        - record: shopstack:canary_error_ratio:ratio5m
+          expr: |
+            sum by (namespace, service, track) (rate(shopstack_http_requests_total{status_class="5xx", track="canary"}[5m]))
+              /
+            clamp_min(sum by (namespace, service, track) (rate(shopstack_http_requests_total{track="canary"}[5m])), 0.001)
+
+        - record: shopstack:canary_requests:rate5m
+          expr: sum by (namespace, service) (rate(shopstack_http_requests_total{track="canary"}[5m]))
+
+        - record: shopstack:checkout_conversion:ratio15m
+          expr: |
+            sum(rate(shopstack_orders_total{status="confirmed"}[15m]))
+              /
+            clamp_min(sum(rate(shopstack_storefront_checkout_started_total[15m])), 0.001)
+
+        - record: shopstack:payment_decline_ratio:ratio15m
+          expr: |
+            sum(rate(shopstack_payments_total{status="declined"}[15m]))
+              /
+            clamp_min(sum(rate(shopstack_payments_total[15m])), 0.001)
+
+    # ── SLO / availability ──────────────────────────────────────────────────
+    - name: shopstack.slo.alerts
+      rules:
+        - alert: ShopStackHighErrorRate
+          expr: |
+            shopstack:http_error_ratio:ratio5m{namespace=~"shopstack-.*"} > 0.02
+              and
+            shopstack:http_requests:rate5m{namespace=~"shopstack-.*"} > 0.5
+          for: 5m
+          labels:
+            severity: critical
+            team: shopstack
+          annotations:
+            summary: "{{ $labels.service }} is failing {{ $value | humanizePercentage }} of requests"
+            description: >
+              More than 2% of requests to {{ $labels.service }} in {{ $labels.namespace }}
+              have returned 5xx for five minutes. The shopper journey is degraded.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/high-error-rate.md
+            dashboard_url: /d/shopstack-service-red
+
+        - alert: ShopStackLatencyBudgetBurn
+          expr: |
+            shopstack:http_latency_p95:seconds5m{namespace=~"shopstack-.*"} > 1.5
+              and
+            shopstack:http_requests:rate5m{namespace=~"shopstack-.*"} > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            team: shopstack
+          annotations:
+            summary: "{{ $labels.service }} p95 latency is {{ $value | humanizeDuration }}"
+            description: >
+              The 95th percentile of {{ $labels.service }} requests exceeded 1.5s
+              for ten minutes. The objective is 300ms.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/high-latency.md
+            dashboard_url: /d/shopstack-service-red
+
+        - alert: ShopStackLatencyObjectiveBreach
+          expr: shopstack:http_latency_p95:seconds5m{namespace=~"shopstack-prod"} > 0.5
+          for: 30m
+          labels:
+            severity: warning
+            team: shopstack
+          annotations:
+            summary: "{{ $labels.service }} has breached its 500ms p95 objective"
+            description: >
+              Production p95 for {{ $labels.service }} has been above 500ms for
+              thirty minutes. Error budget burn is next.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/high-latency.md
+            dashboard_url: /d/shopstack-service-red
+
+        - alert: ShopStackSLOBurnRateHigh
+          expr: shopstack:slo_error_budget_remaining:ratio{namespace=~"shopstack-.*"} < 0.25
+          for: 30m
+          labels:
+            severity: warning
+            team: shopstack
+          annotations:
+            summary: "{{ $labels.service }} has burned 75% of its 30-day error budget"
+            description: >
+              At the current burn rate {{ $labels.service }} exhausts its 99.9%
+              availability objective before the window resets. Freeze feature work
+              on this service until it is back inside budget.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/error-budget-burn.md
+            dashboard_url: /d/shopstack-overview
+
+        - alert: ShopStackPodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace=~"shopstack-.*"}[10m]) > 3
+          for: 10m
+          labels:
+            severity: warning
+            team: shopstack
+          annotations:
+            summary: "{{ $labels.pod }} is restarting repeatedly"
+            description: >
+              {{ $labels.container }} in {{ $labels.pod }} restarted more than three
+              times in ten minutes.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/pod-crashloop.md
+            dashboard_url: /d/shopstack-service-red
+
+    # ── Business journeys ───────────────────────────────────────────────────
+    - name: shopstack.business.alerts
+      rules:
+        - alert: ShopStackCheckoutConversionDrop
+          # A conversion collapse with healthy infrastructure means a *logical*
+          # failure: a payment provider change, a pricing bug, a broken step.
+          expr: |
+            shopstack:checkout_conversion:ratio15m < 0.5
+              and
+            sum(rate(shopstack_storefront_checkout_started_total[15m])) > 0.05
+          for: 15m
+          labels:
+            severity: critical
+            team: shopstack
+          annotations:
+            summary: "Checkout conversion has fallen below 50%"
+            description: >
+              Shoppers are starting checkout but not completing it. Infra is
+              healthy, so look at the saga: payments, stock reservations and the
+              catalog's order flow.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/checkout-conversion.md
+            dashboard_url: /d/shopstack-overview
+
+        - alert: ShopStackPaymentDeclineSpike
+          expr: |
+            shopstack:payment_decline_ratio:ratio15m > 0.25
+              and
+            sum(rate(shopstack_payments_total[15m])) > 0.02
+          for: 15m
+          labels:
+            severity: warning
+            team: shopstack
+          annotations:
+            summary: "{{ $value | humanizePercentage }} of payments are being declined"
+            description: >
+              A decline rate above 25% is usually the processor, not the shoppers.
+              Check the PSP status page before changing anything.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/payment-declines.md
+            dashboard_url: /d/shopstack-overview
+
+        - alert: ShopStackSagaCompensationsHigh
+          expr: sum(rate(shopstack_saga_compensations_total[10m])) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+            team: shopstack
+          annotations:
+            summary: "Checkout is compensating {{ $value | humanize }} orders/sec"
+            description: >
+              Compensations mean orders are failing after stock was reserved. Examine
+              the saga step that fails first on /d/shopstack-overview.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/saga-compensation.md
+            dashboard_url: /d/shopstack-overview
+
+    # ── Delivery safety ─────────────────────────────────────────────────────
+    - name: shopstack.delivery.alerts
+      rules:
+        - alert: ShopStackCanaryDegraded
+          expr: |
+            shopstack:canary_error_ratio:ratio5m{namespace=~"shopstack-.*"} > 0.05
+              and
+            shopstack:canary_requests:rate5m{namespace=~"shopstack-.*"} > 0.05
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Canary of {{ $labels.service }} is failing {{ $value | humanizePercentage }} of requests"
+            description: >
+              The canary track is materially worse than stable. Argo Rollouts should
+              abort automatically; if it did not, `kubectl argo rollouts abort`.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/canary-failure.md
+            dashboard_url: /d/shopstack-progressive-delivery
+
+        - alert: ShopStackRolloutStuck
+          expr: |
+            kube_deployment_status_replicas_available{namespace=~"shopstack-.*"}
+              <
+            kube_deployment_spec_replicas{namespace=~"shopstack-.*"}
+              and on (namespace, deployment)
+            changes(kube_deployment_status_replicas_available{namespace=~"shopstack-.*"}[15m]) == 0
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "{{ $labels.deployment }} in {{ $labels.namespace }} has been under-replicated for 15m"
+            description: >
+              Fewer replicas are available than desired and the count has not moved.
+              Usually an unschedulable pod (quota, affinity) or a failing readiness
+              probe.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/rollout-stuck.md
+            dashboard_url: /d/shopstack-progressive-delivery
+
+    # ── Platform ────────────────────────────────────────────────────────────
+    - name: shopstack.platform.alerts
+      rules:
+        - alert: ShopStackArgoCDAppOutOfSync
+          expr: max by (name, sync_status) (argocd_app_info{sync_status!="Synced"}) == 1
+          for: 30m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} is {{ $labels.sync_status }}"
+            description: >
+              {{ $labels.name }} has not matched Git for thirty minutes: either a
+              broken manifest or a controller that cannot apply it.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/argocd-out-of-sync.md
+            dashboard_url: /d/shopstack-platform
+
+        - alert: ShopStackArgoCDAppDegraded
+          expr: max by (name, health_status) (argocd_app_info{health_status=~"Degraded|Missing"}) == 1
+          for: 15m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Argo CD application {{ $labels.name }} is {{ $labels.health_status }}"
+            description: >
+              The desired state is applied but the workload is unhealthy. Start with
+              `argocd app get {{ $labels.name }}` and the pod events in its namespace.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/argocd-degraded.md
+            dashboard_url: /d/shopstack-platform
+
+        - alert: ShopStackCertificateExpiringSoon
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds{name=~".*shopstack.*"}
+              - time()
+              <
+            14 * 24 * 60 * 60
+          for: 1h
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "TLS certificate {{ $labels.name }} expires in under 14 days"
+            description: >
+              cert-manager has not renewed the certificate. Inspect the Certificate,
+              Order and Challenge objects in {{ $labels.namespace }}.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/tls-expiry.md
+            dashboard_url: /d/shopstack-platform
+
+        - alert: ShopStackPolicyViolations
+          expr: sum by (policy_name) (increase(kyverno_policy_results_total{status="fail"}[1h])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Kyverno policy {{ $labels.policy_name }} is blocking workloads"
+            description: >
+              At least one admission request failed {{ $labels.policy_name }} in the
+              last hour. In production this policy runs in Enforce mode.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/policy-violation.md
+            dashboard_url: /d/shopstack-platform
+
+        - alert: ShopStackNamespaceQuotaSaturated
+          expr: |
+            kube_resourcequota{namespace=~"shopstack-.*", type="used", resource=~"requests.cpu|requests.memory"}
+              /
+            kube_resourcequota{namespace=~"shopstack-.*", type="hard", resource=~"requests.cpu|requests.memory"}
+              > 0.9
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "{{ $labels.namespace }} is at {{ $value | humanizePercentage }} of its {{ $labels.resource }} quota"
+            description: >
+              The namespace is close to refusing new pods. Raise the quota through a
+              reviewed change, or find out what is leaking replicas.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/quota-saturated.md
+            dashboard_url: /d/shopstack-platform
+
+        - alert: ShopStackPodNotReady
+          expr: |
+            max by (namespace, pod) (kube_pod_status_ready{namespace=~"shopstack-.*", condition="true"} == 0) == 1
+          for: 15m
+          labels:
+            severity: warning
+            team: shopstack
+          annotations:
+            summary: "{{ $labels.pod }} has been unready for 15 minutes"
+            description: >
+              A pod that never becomes ready is invisible to the Service. Check its
+              readiness probe and dependency health.
+            runbook_url: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/pod-not-ready.md
+            dashboard_url: /d/shopstack-service-red

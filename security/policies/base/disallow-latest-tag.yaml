@@ -1,0 +1,39 @@
+# `image: foo:latest` is a production incident with a delay fuse: the pod that
+# restarts at 3am is not the pod that was tested. Every image reference must carry
+# an explicit, immutable tag.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow the latest tag
+    policies.kyverno.io/category: Supply chain
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-explicit-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: "Image tags must be explicit and must not be `latest` (promotion pins 1.2.3 or a sha256 digest)."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+    - name: require-a-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: "Images must carry a tag or a digest."
+        pattern:
+          spec:
+            containers:
+              - image: "*:*"

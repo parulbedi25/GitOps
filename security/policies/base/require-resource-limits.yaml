@@ -1,0 +1,45 @@
+# No requests, no scheduling guarantee. No limits, no blast-radius control.
+#
+# A pod without requests is the first thing evicted under node pressure and the
+# last thing the scheduler can place sensibly; a pod without limits can take the
+# whole node down with it. The chart always renders both, so this policy should
+# only ever fire on something that bypassed the chart.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require resource requests and limits
+    policies.kyverno.io/category: Best practices
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-requests-and-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      exclude:
+        any:
+          # Migration Jobs finish in seconds; the chart still sets limits, but do
+          # not make a data migration fail admission over a missing request.
+          - resources:
+              kinds: [Pod]
+              selector:
+                matchLabels:
+                  shopstack.io/component: migration
+      validate:
+        message: "Every container needs CPU and memory requests and limits."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

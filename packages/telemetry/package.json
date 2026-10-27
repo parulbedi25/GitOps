@@ -1,0 +1,27 @@
+{
+  "name": "@shopstack/telemetry",
+  "version": "1.0.0",
+  "description": "ShopStack service runtime: config, logging, metrics, health probes, error model, HTTP client and graceful shutdown.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./testing": "./src/testing.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "fastify": "^4.28.1",
+    "pino": "^9.5.0",
+    "prom-client": "^15.1.3",
+    "zod": "^3.23.8"
+  },
+  "optionalDependencies": {
+    "pino-pretty": "^11.2.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

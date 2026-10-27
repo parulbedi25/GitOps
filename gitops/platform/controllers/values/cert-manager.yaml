@@ -1,0 +1,45 @@
+# cert-manager — TLS automation.
+crds:
+  enabled: true
+  keep: true # never delete CRDs on uninstall: Certificates would be orphaned
+
+replicaCount: 2
+
+prometheus:
+  enabled: true
+  servicemonitor:
+    # Declared in gitops/platform/observability/servicemonitors.yaml (see there).
+    enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+webhook:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+cainjector:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Short-lived certificates keep the rotation path exercised.
+# (Individual Certificates can still request longer lifetimes.)
+global:
+  logLevel: 2

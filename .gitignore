@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build + test output
+dist/
+build/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+junit.xml
+test-results/
+sbom*.json
+
+# Local environment & secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+!**/certs/.gitkeep
+kubeconfig*
+*.kubeconfig
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Tooling caches
+.cache/
+.venv/
+__pycache__/
+.eslintcache
+.prettiercache
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Generated GitOps artifacts
+gitops/bootstrap/argocd/install.yaml
+gitops/charts/**/charts/*.tgz
+gitops/**/charts/*.tgz
+rendered/
+tmp/
+.run/

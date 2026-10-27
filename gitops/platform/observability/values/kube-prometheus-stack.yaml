@@ -1,0 +1,276 @@
+# kube-prometheus-stack — Prometheus, Alertmanager, Grafana and the standard
+# exporters, in one reviewed values file.
+#
+# Sizing here is for the reference (kind) cluster. Production overrides live in
+# gitops/platform/observability/values/kube-prometheus-stack.prod.yaml and are
+# merged by the cluster overlay.
+fullnameOverride: kube-prometheus-stack
+
+# ── Prometheus ───────────────────────────────────────────────────────────────
+prometheus:
+  enabled: true
+  ingress:
+    enabled: false # port-forward only; the Grafana datasource is cluster-internal
+  prometheusSpec:
+    replicas: 1
+    retention: 7d
+    retentionSize: 8GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    # Empty selectors = scrape *every* ServiceMonitor/PodMonitor/PrometheusRule
+    # in the cluster, regardless of Helm release labels. New namespaces therefore
+    # get observability for free.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    podMonitorSelector: {}
+    ruleSelector: {}
+    # Only keep series we can act on: cuts cardinality massively.
+    walCompression: true
+    enableAdminAPI: false
+    externalLabels:
+      cluster: shopstack
+      managed_by: gitops
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      fsGroup: 65534
+      seccompProfile:
+        type: RuntimeDefault
+    containers:
+      - name: prometheus
+        resources:
+          requests:
+            cpu: 200m
+            memory: 1Gi
+          limits:
+            cpu: "1"
+            memory: 2Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop: ["ALL"]
+
+  thanosService:
+    enabled: false
+
+# ── Alertmanager ────────────────────────────────────────────────────────────
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: default
+      group_by: [alertname, namespace, service]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # Page-worthy signals break out of the batch.
+        - matchers: ['severity = "critical"']
+          receiver: critical
+          group_wait: 10s
+          repeat_interval: 1h
+        - matchers: ['team = "platform"']
+          receiver: platform
+    receivers:
+      # The reference stack ships with inert receivers so a fresh cluster does not
+      # try to page anybody. Point these at Slack/PagerDuty webhooks in a real
+      # deployment — that is a one-file change, reviewed like everything else.
+      - name: default
+        webhook_configs:
+          - url: http://alert-sink.observability.svc.cluster.local:8080/default
+            send_resolved: true
+      - name: critical
+        webhook_configs:
+          - url: http://alert-sink.observability.svc.cluster.local:8080/critical
+            send_resolved: true
+      - name: platform
+        webhook_configs:
+          - url: http://alert-sink.observability.svc.cluster.local:8080/platform
+            send_resolved: true
+    inhibit_rules:
+      - source_matchers: ['severity = "critical"']
+        target_matchers: ['severity = "warning"']
+        equal: [alertname, namespace, service]
+      # Silence downstream noise when the cluster itself is on fire.
+      - source_matchers: ['alertname = "KubeNodeNotReady"']
+        target_matchers: ['severity =~ "warning|info"']
+
+# ── Grafana ─────────────────────────────────────────────────────────────────
+grafana:
+  enabled: true
+  replicas: 1
+  # Admin password comes from the cluster secret store, never from Git:
+  # gitops/platform/observability/grafana-admin.externalsecret.yaml
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: browser
+  testFramework:
+    enabled: false
+  ingress:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  persistence:
+    enabled: false # dashboards are provisioned from Git; no state to keep
+  sidecar:
+    dashboards:
+      enabled: true
+      # Pick up ConfigMaps from every namespace, so an environment can ship its
+      # own dashboards next to its workloads.
+      searchNamespace: ALL
+      label: grafana_dashboard
+      labelValue: "1"
+      # Must match the provider path below or the sidecar copies files into a
+      # directory Grafana never reads (a classic, silent dashboard no-show).
+      folder: /tmp/dashboards
+      provider:
+        allowUiUpdates: false
+    datasources:
+      enabled: true
+      searchNamespace: ALL
+  additionalDataSources: []
+  grafana.ini:
+    analytics:
+      check_for_updates: false
+      reporting_enabled: false
+    auth:
+      disable_login_form: false
+    log:
+      level: warn
+    security:
+      cookie_secure: false
+      strict_transport_security: false
+    server:
+      root_url: "%(protocol)s://%(domain)s/"
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: shopstack
+          orgId: 1
+          folder: ShopStack
+          type: file
+          disableDeletion: true
+          editable: false
+          options:
+            path: /tmp/dashboards
+
+# ── Exporters ───────────────────────────────────────────────────────────────
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true
+prometheusNodeExporter:
+  enabled: true
+kubeApiServer:
+  enabled: true
+kubelet:
+  enabled: true
+kubeControllerManager:
+  enabled: true
+coreDns:
+  enabled: true
+kubeEtcd:
+  enabled: true
+kubeScheduler:
+  enabled: true
+kubeProxy:
+  enabled: false # not present on most managed clusters
+
+prometheusOperator:
+  enabled: true
+  admissionWebhooks:
+    enabled: true
+    patch:
+      enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+  prometheusConfigReloader:
+    resources:
+      requests:
+        cpu: 20m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# Default rules are useful, but the noisy "watchdog/CPUThrottlingHigh" pair is
+# not: ShopStack runs with tight CPU limits on purpose.
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: false
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: false
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true

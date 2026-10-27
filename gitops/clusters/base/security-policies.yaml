@@ -1,0 +1,38 @@
+# Kyverno ClusterPolicies. The path is patched per cluster so that dev/QA run in
+# Audit mode and production runs in Enforce mode — same policy source, different
+# blast radius.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopstack-security-policies
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shopstack
+    shopstack.io/tier: security
+    shopstack.io/managed-by: gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  project: shopstack-platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  source:
+    repoURL: https://github.com/parulbedi25/GitOps.git
+    targetRevision: main
+    path: security/policies/overlays/dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m
+  revisionHistoryLimit: 5

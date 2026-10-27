@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "shopstack.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+    shopstack.io/track: stable
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "shopstack.selectorLabels" . | nindent 4 }}
+---
+{{- if and (eq .Values.workload.kind "Rollout") .Values.rollout.canary.trafficRouting.nginx.enabled }}
+# Canary Service. Argo Rollouts manages the selector on this Service — it adds
+# the new ReplicaSet's pod-template-hash so that only canary pods receive the
+# percentage of traffic configured in the rollout steps.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "shopstack.canaryServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+    shopstack.io/track: canary
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "shopstack.selectorLabels" . | nindent 4 }}
+{{- end }}

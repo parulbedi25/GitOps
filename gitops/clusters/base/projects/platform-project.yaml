@@ -1,0 +1,77 @@
+# AppProject for everything the platform team owns: controllers, observability,
+# policy engine and cluster-scoped security resources.
+#
+# An AppProject is the blast-radius boundary. Even if somebody pushes a manifest
+# that tries to deploy to shopstack-prod from the platform project, Argo CD
+# refuses it — the destination is not in this project's allow-list.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: shopstack-platform
+  namespace: argocd
+  labels:
+    shopstack.io/managed-by: gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform controllers, observability stack and cluster-wide security policies.
+
+  sourceRepos:
+    - https://github.com/parulbedi25/GitOps.git
+    # Upstream Helm repositories used by the platform kustomizations.
+    - https://argoproj.github.io/argo-helm
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://kubernetes.github.io/ingress-nginx
+    - https://charts.jetstack.io
+    - https://kyverno.github.io/kyverno
+    - https://charts.external-secrets.io
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+    - server: https://kubernetes.default.svc
+      namespace: observability
+    - server: https://kubernetes.default.svc
+      namespace: argo-rollouts
+    - server: https://kubernetes.default.svc
+      namespace: ingress-nginx
+    - server: https://kubernetes.default.svc
+      namespace: cert-manager
+    - server: https://kubernetes.default.svc
+      namespace: external-secrets
+    - server: https://kubernetes.default.svc
+      namespace: kyverno
+    - server: https://kubernetes.default.svc
+      namespace: kube-system
+    - server: https://kubernetes.default.svc
+      namespace: shopstack-dev
+    - server: https://kubernetes.default.svc
+      namespace: shopstack-qa
+    - server: https://kubernetes.default.svc
+      namespace: shopstack-prod
+
+  # Platform charts legitimately manage cluster-scoped objects (CRDs, ClusterRoles,
+  # webhooks). Everything is reviewed in Git, and Kyverno still evaluates it.
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  # Surfaces resources that were deleted from Git but still exist in the cluster.
+  orphanedResources:
+    warn: true
+
+  roles:
+    - name: ci-sync
+      description: Role used by the deployment pipeline to request a sync (no delete rights).
+      policies:
+        - p, proj:shopstack-platform:ci-sync, applications, get, shopstack-platform/*, allow
+        - p, proj:shopstack-platform:ci-sync, applications, sync, shopstack-platform/*, allow
+      groups:
+        - shopstack:ci

@@ -1,0 +1,96 @@
+# ApplicationSet for the fifteen service×environment Applications.
+#
+# The generator walks `gitops/apps/overlays/<env>/*` in this repository, so
+# **adding a service is adding a directory** — no Application manifest to write.
+# Each generated Application is one Kustomize build of the Helm chart with that
+# environment's values, and its image pin is the promotion target.
+#
+# The env glob is patched per cluster (gitops/clusters/<env>/kustomization.yaml)
+# so a cluster only ever reconciles its own environment.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: shopstack-services
+  namespace: argocd
+  labels:
+    shopstack.io/managed-by: gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  # Never delete production applications because a directory briefly disappeared
+  # from a branch.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+
+  generators:
+    - git:
+        repoURL: https://github.com/parulbedi25/GitOps.git
+        revision: main
+        directories:
+          - path: gitops/apps/overlays/dev/*
+
+  template:
+    metadata:
+      name: 'shopstack-{{.path.basename}}-{{index .path.segments 3}}'
+      labels:
+        app.kubernetes.io/part-of: shopstack
+        app.kubernetes.io/component: '{{.path.basename}}'
+        shopstack.io/environment: '{{index .path.segments 3}}'
+        shopstack.io/managed-by: gitops
+      annotations:
+        # Storefront lands after the APIs it calls; everything else shares wave 20.
+        argocd.argoproj.io/sync-wave: '{{ if eq .path.basename "storefront" }}30{{ else }}20{{ end }}'
+        argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
+    spec:
+      project: shopstack-apps
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: 'shopstack-{{index .path.segments 3}}'
+      source:
+        repoURL: https://github.com/parulbedi25/GitOps.git
+        targetRevision: main
+        path: '{{.path.path}}'
+        kustomize:
+          # The app overlays inflate the shopstack-service Helm chart, so Argo CD
+          # needs Helm available in the repo-server (bundled since v2.6).
+          buildOptions: --enable-helm
+      syncPolicy:
+        # Drift correction is automatic in every environment. What differs is who
+        # can change Git: dev merges freely, QA needs a green CI, prod needs an
+        # approved promotion PR (see .github/workflows/promote-prod.yaml).
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=false
+          - ApplyOutOfSyncOnly=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+          - RespectIgnoreDifferences=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 3m
+      revisionHistoryLimit: 10
+      # Ignore the fields that controllers legitimately mutate at runtime, so the
+      # Applications do not flap between Synced and OutOfSync.
+      ignoreDifferences:
+        - group: argoproj.io
+          kind: Rollout
+          jsonPointers:
+            - /spec/replicas
+        - group: apps
+          kind: Deployment
+          jsonPointers:
+            - /spec/replicas
+        - group: autoscaling
+          kind: HorizontalPodAutoscaler
+          jsonPointers:
+            - /spec/minReplicas
+            - /spec/maxReplicas

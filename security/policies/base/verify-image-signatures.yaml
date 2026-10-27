@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Cosign keyless verification.
+#
+# CI signs every image by digest with cosign using GitHub's OIDC identity; the
+# signature lives in the registry next to the image. This policy re-checks that
+# signature at admission time, and pins **who** is allowed to have produced it:
+#
+#   issuer  https://token.actions.githubusercontent.com
+#   subject https://github.com/parulbedi25/GitOps/.github/workflows/release.yaml@refs/heads/main
+#
+# Keyless means no long-lived private key to steal, and the subject pinning means a
+# signature from a fork or a feature branch does not count.
+#
+# Operational note: images built locally (`docker build`, kind demo) are unsigned,
+# so this policy runs in Audit outside production. Production runs it in Enforce
+# and only accepts images that went through the release workflow.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+  annotations:
+    policies.kyverno.io/title: Verify image signatures (cosign keyless)
+    policies.kyverno.io/category: Supply chain
+    policies.kyverno.io/severity: critical
+spec:
+  validationFailureAction: Audit
+  background: false
+  webhookTimeoutSeconds: 30
+  failurePolicy: Fail
+  rules:
+    - name: verify-shopstack-images
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/parulbedi25/shopstack/*"
+          failureAction: Audit
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subject: "https://github.com/parulbedi25/GitOps/.github/workflows/release.yaml@refs/heads/main"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          # The signature must cover the digest, and the digest is what the
+          # overlay pins — a re-tagged image cannot reuse an old signature.
+          mutateDigest: false
+          verifyDigest: true
+          required: true

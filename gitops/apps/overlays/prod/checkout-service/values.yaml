@@ -1,0 +1,106 @@
+# PROD values for checkout-service.
+#
+# Composed by the kustomization next to this file (Kustomize helmCharts).
+# Promotion changes the image reference in kustomization.yaml, not this file.
+# Checkout is the only service allowed to call payments, catalog and cart.
+# Its NetworkPolicy encodes that: only the storefront may call it, and it may
+# call exactly the three dependencies above.
+
+global:
+  environment: prod
+  imageRegistry: ghcr.io/parulbedi25
+
+image:
+  repository: shopstack/checkout-service
+  pullPolicy: IfNotPresent
+
+tier: critical
+replicaCount: 3
+workload:
+  kind: Rollout
+  progressDeadlineSeconds: 900
+
+rollout:
+  strategy: canary
+  canary:
+    trafficRouting:
+      nginx:
+        enabled: false
+      steps:
+        - setWeight: 5
+        - pause: { duration: 120s }
+        - analysis:
+            templates:
+              - templateName: "__SUCCESS_RATE__"
+        - setWeight: 25
+        - pause: { duration: 300s }
+        - analysis:
+            templates:
+              - templateName: "__SUCCESS_RATE__"
+        - setWeight: 50
+        - pause: { duration: 300s }
+        - setWeight: 100
+
+config:
+  NODE_ENV: "production"
+  DEPLOYMENT_ENVIRONMENT: "prod"
+  LOG_LEVEL: "info"
+  LOG_PRETTY: "false"
+  SERVICE_NAME: "checkout-service"
+  ALLOW_CHAOS: "false"
+  STEP_TIMEOUT_MS: "4000"
+  DB_DRIVER: "memory"
+  CATALOG_URL: "http://catalog-service.shopstack-prod.svc.cluster.local"
+  CART_URL: "http://cart-service.shopstack-prod.svc.cluster.local"
+  PAYMENTS_URL: "http://payments-service.shopstack-prod.svc.cluster.local"
+
+secrets:
+  enabled: false
+
+networkPolicy:
+  enabled: true
+  allowedClients:
+    - storefront
+  allowIngressController: false
+  allowPrometheus: true
+  egressAllowSameNamespace: true
+  allowDatabaseEgress: true
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 384Mi
+  limits:
+    cpu: 1000m
+    memory: 768Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 65
+
+ingress:
+  enabled: false
+  className: nginx
+  host: "shopstack.example.com"
+  tls:
+    enabled: true
+    secretName: checkout-service-tls
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+  canaryServiceMonitor: true
+  dashboard:
+    enabled: true
+
+analysis:
+  prometheusAddress: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+  canaryOnly: true

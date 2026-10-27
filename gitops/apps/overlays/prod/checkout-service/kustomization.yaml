@@ -1,0 +1,37 @@
+# PROD · checkout-service
+#
+# Kustomize composes the generic Helm chart with the values in this directory and
+# pins the image that is running. `kustomize edit set image` (and
+# scripts/promote.sh) rewrite the block below: that diff is the promotion.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: shopstack-prod
+
+helmGlobals:
+  chartHome: ../../../../charts
+
+helmCharts:
+  - name: shopstack-service
+    version: 1.4.0
+    releaseName: checkout-service
+    namespace: shopstack-prod
+    # Pinned to the cluster's Kubernetes version so chart capability checks are
+    # deterministic regardless of the local Helm version.
+    kubeVersion: v1.30.0
+    valuesFile: values.yaml
+    includeCRDs: false
+
+images:
+  # Promotion target. In prod, prefer an immutable digest:
+  #   images:
+  #     - name: ghcr.io/parulbedi25/shopstack/checkout-service
+  #       digest: sha256:<64 hex chars>
+  - name: ghcr.io/parulbedi25/shopstack/checkout-service
+    newTag: "1.0.0"
+
+labels:
+  - pairs:
+      shopstack.io/environment: prod
+      shopstack.io/service: checkout-service
+    includeSelectors: false

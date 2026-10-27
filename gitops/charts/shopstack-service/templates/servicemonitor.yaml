@@ -1,0 +1,62 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+{{- $fullname := include "shopstack.fullname" . }}
+{{- $labels := merge (dict) .Values.monitoring.serviceMonitor.labels }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+    {{- toYaml $labels | nindent 4 }}
+    shopstack.io/track: stable
+spec:
+  selector:
+    matchLabels:
+      {{- include "shopstack.selectorLabels" . | nindent 6 }}
+      shopstack.io/track: stable
+  endpoints:
+    - port: http
+      path: {{ .Values.monitoring.serviceMonitor.path }}
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.monitoring.serviceMonitor.scrapeTimeout }}
+      scheme: http
+      # `track` is the label the Argo Rollouts AnalysisTemplates query on. Adding
+      # it here (rather than trusting the pod) means a canary can never be
+      # mislabelled as stable.
+      relabelings:
+        - targetLabel: track
+          replacement: stable
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_pod_node_name]
+          targetLabel: node
+---
+{{- if and (eq .Values.workload.kind "Rollout") .Values.monitoring.canaryServiceMonitor }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}-canary
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+    {{- toYaml $labels | nindent 4 }}
+    shopstack.io/track: canary
+spec:
+  selector:
+    matchLabels:
+      {{- include "shopstack.selectorLabels" . | nindent 6 }}
+      shopstack.io/track: canary
+  endpoints:
+    - port: http
+      path: {{ .Values.monitoring.serviceMonitor.path }}
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.monitoring.serviceMonitor.scrapeTimeout }}
+      scheme: http
+      relabelings:
+        - targetLabel: track
+          replacement: canary
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+{{- end }}
+{{- end }}

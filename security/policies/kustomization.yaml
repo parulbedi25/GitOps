@@ -1,0 +1,7 @@
+# Entry point used by `scripts/validate-manifests.sh` and local testing.
+# Argo CD never syncs this directory directly: it syncs one of the overlays, so
+# each cluster gets the enforcement level that matches its risk.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - base

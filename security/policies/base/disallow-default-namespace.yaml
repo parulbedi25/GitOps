@@ -1,0 +1,28 @@
+# The `default` namespace has no quotas, no NetworkPolicies and no owner. Nothing
+# from this repository should ever land there, and nothing else should either.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-default-namespace
+  annotations:
+    policies.kyverno.io/title: Disallow the default namespace
+    policies.kyverno.io/category: Best practices
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: block-default-namespace
+      match:
+        any:
+          - resources:
+              kinds: [Pod, Deployment, StatefulSet, DaemonSet, Job, CronJob, Service]
+              namespaces: ["default"]
+      validate:
+        message: "Workloads may not be created in the default namespace."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.namespace }}"
+                operator: Equals
+                value: default

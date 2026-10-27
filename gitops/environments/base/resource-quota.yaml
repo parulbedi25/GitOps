@@ -1,0 +1,17 @@
+# A namespace without a quota is a namespace that can take the cluster down.
+# Sizes are patched per environment (dev is small, prod is large).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: shopstack-quota
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "60"
+    services: "20"
+    count/jobs.batch: "20"
+    count/configmaps: "60"
+    count/secrets: "60"

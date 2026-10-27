@@ -1,0 +1,34 @@
+# Every workload must be attributable: to a service, to the platform, and to Git.
+#
+# Without these labels the dashboards cannot group by service, the NetworkPolicies
+# cannot select pods, and an on-call engineer cannot tell whether a pod is managed
+# by Argo CD or was created by hand.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-standard-labels
+  annotations:
+    policies.kyverno.io/title: Require standard labels
+    policies.kyverno.io/category: Best practices
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-labels
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: >-
+          Pods must carry app.kubernetes.io/name, app.kubernetes.io/part-of and
+          shopstack.io/managed-by=gitops (rendered by the shopstack-service chart;
+          a pod without them was probably created by hand).
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"
+              app.kubernetes.io/part-of: "?*"
+              shopstack.io/managed-by: "gitops"

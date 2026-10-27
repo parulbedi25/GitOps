@@ -1,0 +1,19 @@
+{
+  "name": "@shopstack/cart-service",
+  "version": "1.0.0",
+  "description": "ShopStack cart service — session carts, pricing breakdown and checkout locking.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test test/*.test.js",
+    "test:cov": "node --test --experimental-test-coverage test/*.test.js"
+  },
+  "dependencies": {
+    "@shopstack/telemetry": "1.0.0",
+    "fastify": "^4.28.1",
+    "redis": "^4.7.0"
+  }
+}
