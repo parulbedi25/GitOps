@@ -1,0 +1,16 @@
+# Development: everything reports, nothing blocks.
+#
+# Dev is where people try things; a policy that blocks a legitimate experiment
+# teaches engineers to route around Kyverno. Every violation still lands in a
+# PolicyReport, which is what the platform dashboard reads — so the signal exists
+# before the enforcement does.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+labels:
+  - pairs:
+      shopstack.io/enforcement: audit
+    includeSelectors: false

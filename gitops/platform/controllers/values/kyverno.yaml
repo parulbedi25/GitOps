@@ -1,0 +1,71 @@
+# Kyverno — policy as code, evaluated at admission time.
+#
+# The cluster policies themselves live in security/policies (a separate Argo CD
+# Application at sync wave 5) so that policy changes get their own review trail.
+admissionController:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+backgroundController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+cleanupController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+reportsController:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+crds:
+  install: true
+
+features:
+  # Background scanning produces the PolicyReports that the security dashboard
+  # and the `kyverno-policy-report-failures` alert read.
+  backgroundScan:
+    enabled: true
+    backgroundScanInterval: 1h
+  admissionReports:
+    enabled: true
+  aggregateReports:
+    enabled: true
+
+serviceMonitor:
+  # Declared in gitops/platform/observability/servicemonitors.yaml (see there).
+  enabled: false
+
+config:
+  # Never let a Kyverno outage block the whole API server: allow 30s of failure
+  # before the webhook starts rejecting requests.
+  webhooks:
+    - namespaceSelector:
+        matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: NotIn
+            values: [kube-system, kyverno, cert-manager]

@@ -1,0 +1,302 @@
+# Default values for shopstack-service.
+#
+# Every environment overlay in gitops/apps/overlays/* starts from these defaults
+# and overrides only what differs. Anything that changes between environments is a
+# value here — never a code branch, never a manual kubectl edit.
+
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  # dev | qa | staging | prod — injected into the app as DEPLOYMENT_ENVIRONMENT
+  environment: dev
+  # Registry prefix used when `image.registry` is not set explicitly.
+  imageRegistry: ghcr.io/parulbedi25
+
+replicaCount: 2
+
+image:
+  repository: shopstack/placeholder
+  # Either tag or digest. Production overlays pin digests for immutability.
+  tag: "1.0.0"
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# ── Workload ────────────────────────────────────────────────────────────────
+workload:
+  # Deployment = plain rolling update. Rollout = progressive delivery via Argo Rollouts.
+  kind: Deployment
+  revisionHistoryLimit: 5
+  minReadySeconds: 5
+  progressDeadlineSeconds: 600
+  annotations: {}
+
+rollout:
+  # Only used when workload.kind=Rollout. The controller must be installed
+  # (gitops/platform/controllers).
+  strategy: canary
+
+  canary:
+    # Steps are intentionally conservative: 5% for observation, then a short
+    # pause for humans, then 25/50/100. `setWeight` requires nginx traffic
+    # routing; without it Rollouts falls back to replica-based canaries.
+    steps:
+      - setWeight: 5
+      - pause: { duration: 60s }
+      - analysis: { templates: [{ templateName: "__SUCCESS_RATE__" }] }
+      - setWeight: 25
+      - pause: { duration: 120s }
+      - analysis: { templates: [{ templateName: "__SUCCESS_RATE__" }] }
+      - setWeight: 50
+      - pause: { duration: 120s }
+      - setWeight: 100
+    maxSurge: 25%
+    maxUnavailable: 0
+    trafficRouting:
+      nginx:
+        # Argo Rollouts manages the canary Ingress; this is the stable one.
+        enabled: true
+        stableIngress: ""
+        additionalIngressAnnotations: {}
+        annotationPrefix: nginx.ingress.kubernetes.io
+    analysis:
+      enabled: true
+      # Interval/count define how long the controller watches a metric before
+      # deciding. 6 x 30s = 3 minutes of evidence per gate.
+      interval: 30s
+      count: 6
+      failureLimit: 2
+      startingStep: 1
+
+  blueGreen:
+    enabled: false
+    autoPromotionEnabled: false
+    scaleDownDelaySeconds: 300
+
+# ── Container ───────────────────────────────────────────────────────────────
+containerPort: 8080
+command: []
+args: []
+
+# Non-secret configuration rendered into a ConfigMap and injected with envFrom.
+# Changing this rolls the pods automatically (checksum annotation).
+config: {}
+
+# Secrets are never stored in Git. This renders an ExternalSecret that syncs from
+# the cloud secret manager through the External Secrets Operator.
+secrets:
+  enabled: true
+  name: ""
+  refreshInterval: 1h
+  # dev/qa tolerate a missing secret (the app degrades gracefully); prod fails
+  # closed so a misconfigured ExternalSecret is caught before traffic lands.
+  optional: false
+  secretStoreRef:
+    name: cluster-secret-store
+    kind: ClusterSecretStore
+  # [{ name: DATABASE_URL, remoteRef: { key: shopstack/prod/database, property: url } }]
+  data: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+# ── Service & ingress ───────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  path: /
+  pathType: Prefix
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
+
+# ── Scheduling & availability ───────────────────────────────────────────────
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels: {}
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: null
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+
+# ── Health ──────────────────────────────────────────────────────────────────
+probes:
+  liveness:
+    enabled: true
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    path: /readyz
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+    successThreshold: 1
+  startup:
+    enabled: true
+    path: /startupz
+    periodSeconds: 5
+    failureThreshold: 24
+    timeoutSeconds: 2
+
+lifecycle:
+  preStopSleepSeconds: 5
+
+# ── Security ────────────────────────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  privileged: false
+  capabilities:
+    drop:
+      - ALL
+
+# ── Resources ───────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+terminationGracePeriodSeconds: 30
+
+# ── Networking ──────────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  # Zero-trust default: a pod may only be reached by the services listed here
+  # (matched by app.kubernetes.io/name in the same namespace). An empty list
+  # means "reachable by nobody in the namespace".
+  allowedClients: []
+  # Edge services opt in to traffic from the ingress controller.
+  allowIngressController: false
+  ingressControllerNamespace: ingress-nginx
+  # Prometheus must always be able to scrape /metrics.
+  allowPrometheus: true
+  prometheusNamespace: observability
+  # Service-to-service calls inside the namespace (catalog, cart, payments, …).
+  egressAllowSameNamespace: true
+  # 5432/6379 for a managed database or cache reached over the private network.
+  allowDatabaseEgress: false
+  extraIngress: []
+  extraEgress: []
+
+# ── Observability ───────────────────────────────────────────────────────────
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    path: /metrics
+    labels:
+      release: kube-prometheus-stack
+  # A second ServiceMonitor scraping only the canary pods, labelled
+  # `track: canary`, so AnalysisTemplates can evaluate the canary in isolation
+  # instead of a blend of stable + canary traffic.
+  canaryServiceMonitor: true
+  dashboard:
+    enabled: true
+    # Picked up by the kube-prometheus-stack Grafana sidecar.
+    labels:
+      grafana_dashboard: "1"
+
+# ── One-off jobs (schema migrations, cache warmup) ──────────────────────────
+migrations:
+  enabled: false
+  name: ""
+  command: []
+  args: []
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  # Runs before the Deployment/Rollout is synced (Argo CD PreSync hook).
+  hook: PreSync
+
+# ── Escape hatches (use sparingly, reviewed in PR) ──────────────────────────
+extraEnv: []
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
+extraManifests: []
+
+# ── Argo Rollouts analysis queries ──────────────────────────────────────────
+# These live here (rather than in the template) because the query text contains
+# Argo's own {{args.*}} placeholders, which Helm must not interpret.
+analysis:
+  prometheusAddress: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+  # When true, metrics are filtered to the canary ServiceMonitor (track="canary").
+  canaryOnly: true
+  metrics:
+    successRate:
+      name: success-rate
+      query: |
+        sum(rate(shopstack_http_requests_total{namespace="{{args.namespace}}",service="{{args.service}}",status_class!="5xx",track="{{args.track}}"}[2m]))
+        /
+        clamp_min(sum(rate(shopstack_http_requests_total{namespace="{{args.namespace}}",service="{{args.service}}",track="{{args.track}}"}[2m])), 0.0001)
+      successCondition: isNaN(result[0]) or result[0] >= 0.995
+      failureLimit: 2
+      interval: 30s
+      count: 6
+    latency:
+      name: latency-p95
+      query: |
+        histogram_quantile(0.95,
+          sum by (le) (rate(shopstack_http_request_duration_seconds_bucket{namespace="{{args.namespace}}",service="{{args.service}}",track="{{args.track}}"}[2m]))
+        )
+      successCondition: isNaN(result[0]) or result[0] <= 0.5
+      failureLimit: 2
+      interval: 30s
+      count: 6

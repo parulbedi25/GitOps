@@ -1,0 +1,35 @@
+{
+  "name": "shopstack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ShopStack \u2014 a production-grade e-commerce platform delivered with GitOps (Argo CD, Kustomize, Helm, Argo Rollouts, Prometheus, Grafana).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "start:catalog": "npm run start --workspace @shopstack/catalog-service",
+    "start:cart": "npm run start --workspace @shopstack/cart-service",
+    "start:payments": "npm run start --workspace @shopstack/payments-service",
+    "start:checkout": "npm run start --workspace @shopstack/checkout-service",
+    "start:storefront": "npm run start --workspace @shopstack/storefront",
+    "test": "npm run test --workspaces --if-present",
+    "test:cov": "npm run test:cov --workspaces --if-present",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "validate": "npm run lint && npm test",
+    "smoke": "node scripts/smoke-local.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^9.12.0",
+    "prettier": "^3.3.3",
+    "pino-pretty": "^11.2.2"
+  }
+}

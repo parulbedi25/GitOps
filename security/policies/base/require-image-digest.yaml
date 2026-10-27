@@ -1,0 +1,36 @@
+# A tag is a pointer; a digest is the thing itself.
+#
+# The promotion pipeline rewrites the overlay's `newTag`, which is the right
+# ergonomics for humans, and the release workflow records the digest it built.
+# Verifying the digest is what makes "we deployed exactly what CI built" true rather
+# than aspirational.
+#
+# Kept in Audit everywhere: it is a *maturity* ratchet. The overlays pin tags in
+# this reference repo so the demo cluster is always deployable; a real deployment
+# flips this to Enforce once promotion pins digests.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-image-digest
+  annotations:
+    policies.kyverno.io/title: Prefer immutable image digests
+    policies.kyverno.io/category: Supply chain
+    policies.kyverno.io/severity: low
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: warn-on-tags
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-prod"]
+      validate:
+        message: >-
+          Production images should be pinned by digest (ghcr.io/org/image@sha256:…).
+          Tags are mutable; a digest is the artifact CI signed.
+        pattern:
+          spec:
+            containers:
+              - image: "*@sha256:*"

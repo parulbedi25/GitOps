@@ -1,0 +1,48 @@
+# Prometheus, Grafana, Alertmanager, kube-state-metrics, node-exporter, the
+# ShopStack dashboards and the alert rules. Everything that turns telemetry into
+# a decision — including the metrics Argo Rollouts analyses during a canary.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopstack-observability
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shopstack
+    shopstack.io/tier: observability
+    shopstack.io/managed-by: gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: shopstack-platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  source:
+    repoURL: https://github.com/parulbedi25/GitOps.git
+    targetRevision: main
+    path: gitops/platform/observability
+    kustomize:
+      buildOptions: --enable-helm
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 8
+      backoff:
+        duration: 20s
+        factor: 2
+        maxDuration: 5m
+  ignoreDifferences:
+    # Grafana generates its own secret material and the Prometheus operator
+    # rewrites some defaults on admission.
+    - group: ""
+      kind: Secret
+      name: kube-prometheus-stack-grafana
+      jsonPointers: [/data]
+  revisionHistoryLimit: 5

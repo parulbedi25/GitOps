@@ -1,0 +1,40 @@
+# A pod without a readiness probe joins the Service the moment its process starts,
+# which is how a canary takes 100% of traffic before it can serve a single request.
+#
+# Liveness is required too, but the *design* of the probes matters more than their
+# presence: see packages/telemetry/src/health.js — liveness must not depend on
+# downstream services.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+  annotations:
+    policies.kyverno.io/title: Require readiness and liveness probes
+    policies.kyverno.io/category: Reliability
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-probes
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      exclude:
+        any:
+          - resources:
+              kinds: [Pod]
+              selector:
+                matchLabels:
+                  shopstack.io/component: migration
+      validate:
+        message: "Containers must define readinessProbe and livenessProbe."
+        pattern:
+          spec:
+            containers:
+              - readinessProbe:
+                  "?*": "?*"
+                livenessProbe:
+                  "?*": "?*"

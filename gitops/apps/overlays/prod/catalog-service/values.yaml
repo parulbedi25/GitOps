@@ -1,0 +1,107 @@
+# PROD values for catalog-service.
+#
+# Composed by the kustomization next to this file (Kustomize helmCharts).
+# Promotion changes the image reference in kustomization.yaml, not this file.
+# Flip to managed Postgres (see docs/environments.md):
+#   config:   { DB_DRIVER: postgres }
+#   secrets:  { enabled: true, data: [{ name: DATABASE_URL, remoteRef: { key: shopstack/<env>/catalog, property: url } }] }
+#   migrations: { enabled: true, args: ["apps/catalog-service/scripts/migrate.js"] }
+
+global:
+  environment: prod
+  imageRegistry: ghcr.io/parulbedi25
+
+image:
+  repository: shopstack/catalog-service
+  pullPolicy: IfNotPresent
+
+tier: core
+replicaCount: 3
+workload:
+  kind: Rollout
+  progressDeadlineSeconds: 900
+
+rollout:
+  strategy: canary
+  canary:
+    trafficRouting:
+      nginx:
+        enabled: false
+      steps:
+        - setWeight: 5
+        - pause: { duration: 120s }
+        - analysis:
+            templates:
+              - templateName: "__SUCCESS_RATE__"
+        - setWeight: 25
+        - pause: { duration: 300s }
+        - analysis:
+            templates:
+              - templateName: "__SUCCESS_RATE__"
+        - setWeight: 50
+        - pause: { duration: 300s }
+        - setWeight: 100
+
+config:
+  NODE_ENV: "production"
+  DEPLOYMENT_ENVIRONMENT: "prod"
+  LOG_LEVEL: "info"
+  LOG_PRETTY: "false"
+  SERVICE_NAME: "catalog-service"
+  ALLOW_CHAOS: "false"
+  CACHE_TTL_MS: "5000"
+  METRICS_REFRESH_MS: "15000"
+  DB_DRIVER: "memory"
+
+secrets:
+  enabled: false
+
+networkPolicy:
+  enabled: true
+  allowedClients:
+    - storefront
+    - cart-service
+    - checkout-service
+  allowIngressController: false
+  allowPrometheus: true
+  egressAllowSameNamespace: true
+  allowDatabaseEgress: true
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 384Mi
+  limits:
+    cpu: 1000m
+    memory: 768Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 65
+
+ingress:
+  enabled: false
+  className: nginx
+  host: "shopstack.example.com"
+  tls:
+    enabled: true
+    secretName: catalog-service-tls
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+  canaryServiceMonitor: true
+  dashboard:
+    enabled: true
+
+analysis:
+  prometheusAddress: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+  canaryOnly: true

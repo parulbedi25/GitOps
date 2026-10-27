@@ -1,0 +1,50 @@
+# Cluster controllers: Argo Rollouts, ingress-nginx, cert-manager, External
+# Secrets Operator and Kyverno. They own the CRDs every other Application
+# depends on, hence sync wave 0 and ServerSideApply (CRDs are too large for the
+# client-side apply annotation limit).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopstack-platform-controllers
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shopstack
+    shopstack.io/tier: platform
+    shopstack.io/managed-by: gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: shopstack-platform
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shopstack-prod
+  source:
+    repoURL: https://github.com/parulbedi25/GitOps.git
+    targetRevision: main
+    path: gitops/platform/controllers
+    kustomize:
+      buildOptions: --enable-helm
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+  ignoreDifferences:
+    # Webhook CA bundles are injected by the controllers at runtime.
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers: [/webhooks/0/clientConfig/caBundle]
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers: [/webhooks/0/clientConfig/caBundle]
+  revisionHistoryLimit: 5

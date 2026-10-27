@@ -1,0 +1,78 @@
+# Defence in depth on top of Pod Security Admission.
+#
+# The namespaces already enforce the `restricted` PSA profile, which covers most of
+# this. This policy exists because PSA is a *namespace label*: anyone who can patch
+# a namespace can relax it. A Kyverno policy is cluster-scoped and cannot be
+# switched off by a namespace edit.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pod-hardening
+  annotations:
+    policies.kyverno.io/title: Require hardened pods
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: no-privileged-or-host-access
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: >-
+          Privileged containers, host namespaces, hostPath volumes and added
+          capabilities are not permitted in application namespaces.
+        pattern:
+          spec:
+            =(hostNetwork): false
+            =(hostPID): false
+            =(hostIPC): false
+            =(volumes):
+              - X(hostPath): "null"
+            containers:
+              - =(securityContext):
+                  =(privileged): false
+                  =(allowPrivilegeEscalation): false
+                  =(capabilities):
+                    =(add): "null"
+
+    - name: require-restricted-security-context
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: >-
+          Pods must run as non-root with the RuntimeDefault seccomp profile and drop
+          all capabilities.
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                      - ALL
+
+    - name: require-read-only-root-filesystem
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: "Containers must use a read-only root filesystem (mount emptyDir for scratch space)."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true

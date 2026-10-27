@@ -1,0 +1,16 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "shopstack.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+spec:
+  # minAvailable: 1 keeps the service up during node drains and cluster upgrades.
+  # With replicaCount 1 this also blocks voluntary eviction — dev turns it off.
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "shopstack.selectorLabels" . | nindent 6 }}
+{{- end }}

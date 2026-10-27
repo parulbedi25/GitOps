@@ -1,0 +1,58 @@
+# Namespaces owned by the platform team. Application namespaces live in
+# gitops/environments/ instead.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: baseline
+    shopstack.io/tier: observability
+    shopstack.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argo-rollouts
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    shopstack.io/tier: platform
+    shopstack.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    shopstack.io/tier: platform
+    shopstack.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    shopstack.io/tier: platform
+    shopstack.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    shopstack.io/tier: platform
+    shopstack.io/managed-by: gitops
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kyverno
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    shopstack.io/tier: security
+    shopstack.io/managed-by: gitops

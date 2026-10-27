@@ -1,0 +1,43 @@
+# Only pull from registries we control or can audit.
+#
+# A typo-squatted image (`ghcr.io/parulbedi2/shopstack/storefront`) is a supply
+# chain attack, not a typo: it executes whatever the squatter published.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict image registries
+    policies.kyverno.io/category: Supply chain
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: allowed-registries
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: >-
+          Images must come from ghcr.io/parulbedi25 (ShopStack) or an approved
+          upstream registry (registry.k8s.io, docker.io/library).
+        pattern:
+          spec:
+            containers:
+              - image: "ghcr.io/parulbedi25/* | registry.k8s.io/* | docker.io/library/*"
+
+    - name: no-unknown-registry-init-containers
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: "Init containers are subject to the same registry allow-list."
+        pattern:
+          spec:
+            =(initContainers):
+              - image: "ghcr.io/parulbedi25/* | registry.k8s.io/* | docker.io/library/*"

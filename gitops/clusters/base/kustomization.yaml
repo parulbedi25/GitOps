@@ -1,0 +1,32 @@
+# Cluster bootstrap manifests — the "app of apps".
+#
+# One Argo CD Application points at gitops/clusters/<env>; that overlay inherits
+# this base and declares every other Application, so onboarding a new cluster is:
+#
+#   1. kubectl apply -f gitops/bootstrap/root-app-<env>.yaml
+#   2. watch Argo CD converge (projects → namespaces → controllers → policy →
+#      observability → services)
+#
+# Sync waves encode the dependency order:
+#   -20  AppProjects
+#   -10  namespaces and guard rails (environment)
+#     0  controllers (CRDs: Rollouts, ServiceMonitor, Kyverno…)
+#     5  security policies (need Kyverno CRDs)
+#    10  observability (needs the ServiceMonitor CRD)
+#    20  services (need the Rollouts CRD)
+#    30  storefront
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - projects
+  - environment.yaml
+  - platform-controllers.yaml
+  - security-policies.yaml
+  - observability.yaml
+  - applicationsets/services.yaml
+
+labels:
+  - pairs:
+      shopstack.io/managed-by: gitops
+    includeSelectors: false

@@ -1,0 +1,20 @@
+# Admit-only-what-you-review.
+#
+# These ClusterPolicies are the last line of defence: Argo CD applies what Git
+# says, and Kyverno then decides whether the API server accepts it. They also
+# catch changes that never touch Git — a `kubectl edit` at 3am, or an operator
+# that quietly creates a privileged pod.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - require-standard-labels.yaml
+  - require-pod-hardening.yaml
+  - require-resource-limits.yaml
+  - require-probes.yaml
+  - disallow-latest-tag.yaml
+  - require-image-digest.yaml
+  - restrict-image-registries.yaml
+  - verify-image-signatures.yaml
+  - restrict-service-types.yaml
+  - disallow-default-namespace.yaml

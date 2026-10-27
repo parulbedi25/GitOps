@@ -1,0 +1,22 @@
+# Defaults so that a container without resources never lands unbounded. Kyverno
+# also rejects such pods, but the LimitRange keeps the cluster usable for
+# humans doing a quick kubectl run during an incident.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: shopstack-defaults
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "4"
+        memory: 4Gi
+      min:
+        cpu: 10m
+        memory: 32Mi

@@ -1,0 +1,32 @@
+# QA: audit everywhere, except the basics that must never regress.
+#
+# QA exists to catch what dev lets through, so the two structural policies that
+# break delivery (unattributable pods, unlabelled workloads) are enforced here —
+# a QA deployment without standard labels is a QA deployment the dashboards and
+# NetworkPolicies cannot see.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: ClusterPolicy
+      name: require-standard-labels
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: disallow-latest-tag
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+
+labels:
+  - pairs:
+      shopstack.io/enforcement: mixed
+    includeSelectors: false

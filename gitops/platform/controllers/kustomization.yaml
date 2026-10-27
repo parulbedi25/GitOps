@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Cluster controllers, installed once per cluster.
+#
+# Every chart here is pinned. Upgrades arrive as a pull request that bumps the
+# version and (usually) one values file — reviewed, rendered in CI, then synced by
+# Argo CD like any other change. Nobody runs `helm upgrade` against production.
+#
+# Kustomize is the composition layer: it inflates the upstream charts, applies
+# our values, and lets us patch individual objects without forking a chart.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespaces.yaml
+  - cluster-issuers.yaml
+  - secret-store.yaml
+
+helmCharts:
+  # Progressive delivery. Required for workload.kind=Rollout in the app chart.
+  - name: argo-rollouts
+    repo: https://argoproj.github.io/argo-helm
+    version: 2.37.7
+    releaseName: argo-rollouts
+    namespace: argo-rollouts
+    valuesFile: values/argo-rollouts.yaml
+    includeCRDs: true
+
+  # The ingress controller that terminates TLS and drives canary traffic weights.
+  - name: ingress-nginx
+    repo: https://kubernetes.github.io/ingress-nginx
+    version: 4.11.3
+    releaseName: ingress-nginx
+    namespace: ingress-nginx
+    valuesFile: values/ingress-nginx.yaml
+
+  # Automatic TLS. ClusterIssuers are declared in cluster-issuers.yaml.
+  - name: cert-manager
+    repo: https://charts.jetstack.io
+    version: v1.16.2
+    releaseName: cert-manager
+    namespace: cert-manager
+    valuesFile: values/cert-manager.yaml
+    includeCRDs: true
+
+  # Cloud secrets → Kubernetes Secrets, so nothing sensitive is ever in Git.
+  - name: external-secrets
+    repo: https://charts.external-secrets.io
+    version: 0.12.1
+    releaseName: external-secrets
+    namespace: external-secrets
+    valuesFile: values/external-secrets.yaml
+    includeCRDs: true
+
+  # Policy-as-code enforcement (signatures, non-root, limits, registries…).
+  - name: kyverno
+    repo: https://kyverno.github.io/kyverno
+    version: 3.3.7
+    releaseName: kyverno
+    namespace: kyverno
+    valuesFile: values/kyverno.yaml
+    includeCRDs: true
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: shopstack-platform
+      shopstack.io/managed-by: gitops
+    includeSelectors: false

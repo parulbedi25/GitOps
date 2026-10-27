@@ -1,0 +1,82 @@
+# Production: enforce.
+#
+# Everything that can be expressed as a structural invariant is Enforce here. The
+# two policies that stay in Audit are deliberate:
+#
+#   require-image-digest  a maturity ratchet — flips to Enforce once promotion
+#                         pins digests (the release workflow already records them)
+#
+# `disallow-default-namespace` is Enforce in the base for every cluster.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: ClusterPolicy
+      name: require-standard-labels
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: require-pod-hardening
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: require-resource-limits
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: require-probes
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: disallow-latest-tag
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: restrict-image-registries
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  - target:
+      kind: ClusterPolicy
+      name: restrict-service-types
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+  # Signature verification must also flip at the *rule* level: Kyverno honours
+  # `verifyImages[].failureAction` over the policy-level default.
+  - target:
+      kind: ClusterPolicy
+      name: verify-image-signatures
+    patch: |-
+      - op: replace
+        path: /spec/validationFailureAction
+        value: Enforce
+      - op: replace
+        path: /spec/rules/0/verifyImages/0/failureAction
+        value: Enforce
+
+labels:
+  - pairs:
+      shopstack.io/enforcement: enforce
+    includeSelectors: false

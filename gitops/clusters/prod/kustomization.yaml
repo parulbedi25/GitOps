@@ -1,0 +1,55 @@
+# The production cluster.
+#
+# Differences from dev/QA:
+#   * Kyverno runs in Enforce mode (security/policies/overlays/prod)
+#   * services are Rollouts with automated Prometheus analysis
+#   * TLS is issued by Let's Encrypt (see the prod app overlays)
+#   * only the promotion pipeline can change the image references in Git
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - ../base
+
+patches:
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: shopstack-environment
+    patch: |-
+      - op: replace
+        path: /spec/source/path
+        value: gitops/environments/prod
+  - target:
+      group: argoproj.io
+      kind: Application
+      name: shopstack-security-policies
+    patch: |-
+      - op: replace
+        path: /spec/source/path
+        value: security/policies/overlays/prod
+  - target:
+      group: argoproj.io
+      kind: ApplicationSet
+      name: shopstack-services
+    patch: |-
+      - op: replace
+        path: /spec/generators/0/git/directories/0/path
+        value: gitops/apps/overlays/prod/*
+  # Production keeps a longer history so a rollback target is always available.
+  - target:
+      group: argoproj.io
+      kind: ApplicationSet
+      name: shopstack-services
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/revisionHistoryLimit
+        value: 30
+
+labels:
+  - pairs:
+      shopstack.io/managed-by: gitops
+      shopstack.io/cluster: shopstack-prod
+    includeSelectors: false

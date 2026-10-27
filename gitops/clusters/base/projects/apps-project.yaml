@@ -1,0 +1,76 @@
+# AppProject for the ShopStack application workloads.
+#
+# Deliberately narrow:
+#   * sources must come from this repository only;
+#   * destinations are limited to the three application namespaces;
+#   * cluster-scoped resources are denied outright (no CRDs, no ClusterRoles —
+#     applications have no business creating those).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: shopstack-apps
+  namespace: argocd
+  labels:
+    shopstack.io/managed-by: gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: ShopStack microservices across dev, QA and production.
+
+  sourceRepos:
+    - https://github.com/parulbedi25/GitOps.git
+
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: shopstack-dev
+    - server: https://kubernetes.default.svc
+      namespace: shopstack-qa
+    - server: https://kubernetes.default.svc
+      namespace: shopstack-prod
+
+  # Applications may not create cluster-scoped resources.
+  clusterResourceWhitelist: []
+
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: batch
+      kind: "*"
+    - group: autoscaling
+      kind: "*"
+    - group: policy
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+    - group: monitoring.coreos.com
+      kind: "*"
+    - group: argoproj.io
+      kind: "*"
+    - group: external-secrets.io
+      kind: "*"
+
+  orphanedResources:
+    warn: true
+
+  # Example change freeze. Left commented out because the demo promotes at any
+  # time; a real e-commerce platform uncomments this around Black Friday.
+  # syncWindows:
+  #   - kind: deny
+  #     schedule: "0 0 * * 4,5"         # all day Thursday/Friday
+  #     duration: 24h
+  #     applications: ["shopstack-*-prod"]
+  #     manualSync: true
+
+  roles:
+    - name: ci-sync
+      description: Pipeline role — read + sync, cannot delete applications.
+      policies:
+        - p, proj:shopstack-apps:ci-sync, applications, get, shopstack-apps/*, allow
+        - p, proj:shopstack-apps:ci-sync, applications, sync, shopstack-apps/*, allow
+        - p, proj:shopstack-apps:ci-sync, logs, get, shopstack-apps/*, allow
+      groups:
+        - shopstack:ci

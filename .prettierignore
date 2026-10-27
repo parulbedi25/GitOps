@@ -1,0 +1,10 @@
+# Helm templates are Go templates, not YAML: Prettier cannot parse them.
+gitops/charts/**/templates/**
+gitops/**/charts/**
+# Generated / vendor / runtime artefacts.
+node_modules
+package-lock.json
+.run
+coverage
+rendered
+*.tgz

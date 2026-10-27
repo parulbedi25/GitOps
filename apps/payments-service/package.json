@@ -1,0 +1,19 @@
+{
+  "name": "@shopstack/payments-service",
+  "version": "1.0.0",
+  "description": "ShopStack payments service — authorisation, capture, refunds and signed PSP webhooks.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test test/*.test.js",
+    "test:cov": "node --test --experimental-test-coverage test/*.test.js"
+  },
+  "dependencies": {
+    "@shopstack/telemetry": "1.0.0",
+    "fastify": "^4.28.1",
+    "pg": "^8.13.1"
+  }
+}

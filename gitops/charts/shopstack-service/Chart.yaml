@@ -1,0 +1,24 @@
+apiVersion: v2
+name: shopstack-service
+description: >-
+  Opinionated Helm chart for ShopStack microservices. Deploys either a Deployment
+  (fast-moving environments) or an Argo Rollout (canary/blue-green with automated
+  Prometheus analysis), plus the Service, Ingress, ConfigMap, ExternalSecret,
+  ServiceMonitor, PodDisruptionBudget, HPA and NetworkPolicy that every service
+  in this platform is expected to have.
+type: application
+version: 1.4.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.27.0-0"
+keywords:
+  - shopstack
+  - microservice
+  - gitops
+  - canary
+home: https://github.com/parulbedi25/GitOps
+sources:
+  - https://github.com/parulbedi25/GitOps
+maintainers:
+  - name: ShopStack Platform Team
+annotations:
+  category: E-commerce

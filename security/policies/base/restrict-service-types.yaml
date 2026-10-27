@@ -1,0 +1,28 @@
+# One way into the cluster: the ingress controller.
+#
+# A `LoadBalancer` or `NodePort` Service in an application namespace opens a path
+# that bypasses the ingress (and its TLS, WAF rules and rate limits), and every
+# cloud provider bills for it.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-service-types
+  annotations:
+    policies.kyverno.io/title: Restrict Service types
+    policies.kyverno.io/category: Network
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: only-clusterip
+      match:
+        any:
+          - resources:
+              kinds: [Service]
+              namespaces: ["shopstack-*"]
+      validate:
+        message: "Application Services must be ClusterIP; expose traffic through the Ingress."
+        pattern:
+          spec:
+            type: "ClusterIP"

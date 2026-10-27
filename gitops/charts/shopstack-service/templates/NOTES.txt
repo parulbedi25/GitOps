@@ -1,0 +1,23 @@
+{{ include "shopstack.fullname" . }} is deployed as a {{ .Values.workload.kind }} in namespace {{ .Release.Namespace }}.
+
+Environment : {{ .Values.global.environment }}
+Image       : {{ include "shopstack.image" . }}
+Replicas    : {{ .Values.replicaCount }}{{ if .Values.autoscaling.enabled }} (HPA {{ .Values.autoscaling.minReplicas }}–{{ .Values.autoscaling.maxReplicas }}){{ end }}
+Service     : {{ include "shopstack.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+{{- if .Values.ingress.enabled }}
+Ingress     : https://{{ .Values.ingress.host }}
+{{- end }}
+{{- if eq .Values.workload.kind "Rollout" }}
+
+Progressive delivery
+  Watch the release : kubectl argo rollouts get rollout {{ include "shopstack.fullname" . }} -n {{ .Release.Namespace }} --watch
+  Promote now       : kubectl argo rollouts promote {{ include "shopstack.fullname" . }} -n {{ .Release.Namespace }}
+  Abort             : kubectl argo rollouts abort {{ include "shopstack.fullname" . }} -n {{ .Release.Namespace }}
+  Roll back         : kubectl argo rollouts undo {{ include "shopstack.fullname" . }} -n {{ .Release.Namespace }}
+
+The canary is gated by the {{ include "shopstack.fullname" . }}-canary AnalysisTemplate
+(success rate ≥ 99.5%, p95 ≤ 500ms) evaluated against
+{{ .Values.analysis.prometheusAddress }}.
+{{- end }}
+
+Health endpoints: /healthz (liveness) · /readyz (readiness) · /metrics (Prometheus)

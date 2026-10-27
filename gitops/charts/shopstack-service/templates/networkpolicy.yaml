@@ -1,0 +1,89 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $fullname := include "shopstack.fullname" . }}
+{{- $np := .Values.networkPolicy }}
+{{- $port := .Values.containerPort }}
+# Zero-trust networking for {{ $fullname }}.
+# Default deny both directions, then allow exactly: the named callers, the
+# ingress controller (edge services only), Prometheus, DNS and — where the
+# service talks to a managed database — the database port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "shopstack.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- range $np.allowedClients }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+      ports:
+        - protocol: TCP
+          port: {{ $port }}
+    {{- end }}
+    {{- if $np.allowIngressController }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.ingressControllerNamespace }}
+      ports:
+        - protocol: TCP
+          port: {{ $port }}
+    {{- end }}
+    {{- if $np.allowPrometheus }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $np.prometheusNamespace }}
+      ports:
+        - protocol: TCP
+          port: {{ $port }}
+    {{- end }}
+    {{- with $np.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  egress:
+    # DNS. Without this every lookup fails with a timeout that looks exactly
+    # like the dependency being down.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- if $np.egressAllowSameNamespace }}
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+    {{- if $np.allowDatabaseEgress }}
+    - ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+    {{- end }}
+    # 443 for cloud APIs, workload identity and container registry APIs.
+    - ports:
+        - protocol: TCP
+          port: 443
+    {{- with $np.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,40 @@
+{{- if and (eq .Values.workload.kind "Rollout") .Values.rollout.canary.analysis.enabled }}
+{{- $fullname := include "shopstack.fullname" . }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ $fullname }}-canary
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+spec:
+  args:
+    - name: service
+    - name: namespace
+    - name: track
+  metrics:
+    # Success rate: canary must not serve fewer good responses than the SLO
+    # allows. 99.5% of non-5xx responses over a 2 minute window.
+    - name: success-rate
+      interval: {{ .Values.analysis.metrics.successRate.interval }}
+      count: {{ .Values.analysis.metrics.successRate.count }}
+      failureLimit: {{ .Values.analysis.metrics.successRate.failureLimit }}
+      successCondition: {{ .Values.analysis.metrics.successRate.successCondition | quote }}
+      provider:
+        prometheus:
+          address: {{ .Values.analysis.prometheusAddress }}
+          query: |
+            {{- .Values.analysis.metrics.successRate.query | nindent 12 }}
+    # Latency: a release that is slower but not failing is still a regression and
+    # users feel it as much as errors.
+    - name: latency-p95
+      interval: {{ .Values.analysis.metrics.latency.interval }}
+      count: {{ .Values.analysis.metrics.latency.count }}
+      failureLimit: {{ .Values.analysis.metrics.latency.failureLimit }}
+      successCondition: {{ .Values.analysis.metrics.latency.successCondition | quote }}
+      provider:
+        prometheus:
+          address: {{ .Values.analysis.prometheusAddress }}
+          query: |
+            {{- .Values.analysis.metrics.latency.query | nindent 12 }}
+{{- end }}

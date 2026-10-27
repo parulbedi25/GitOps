@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PROD — the environment that pays the bills.
+#
+# Differences that matter:
+#   * larger quota and 3+ replicas (see apps overlays)
+#   * `restricted` PSA, Kyverno in Enforce mode, image signatures required
+#   * the developer role loses the ability to promote rollouts: promotion is an
+#     Argo Rollouts automated decision or a platform-team `argo rollouts promote`
+#   * only this overlay is deployed from a protected GitHub Environment
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: shopstack-prod
+
+resources:
+  - namespace.yaml
+  - ../../environments/base
+
+patches:
+  - target:
+      kind: ResourceQuota
+      name: shopstack-quota
+    patch: |-
+      - op: replace
+        path: /spec/hard/requests.cpu
+        value: "32"
+      - op: replace
+        path: /spec/hard/requests.memory
+        value: 64Gi
+      - op: replace
+        path: /spec/hard/limits.cpu
+        value: "64"
+      - op: replace
+        path: /spec/hard/limits.memory
+        value: 128Gi
+      - op: replace
+        path: /spec/hard/pods
+        value: "200"
+  # Production debugging is read-only. `pods/exec` is removed entirely: use the
+  # audit log and the traces instead of a shell in a payment pod.
+  - target:
+      kind: Role
+      name: shopstack-developer
+    patch: |-
+      - op: remove
+        path: /rules/1
+
+labels:
+  - pairs:
+      shopstack.io/environment: prod
+      shopstack.io/cost-center: production
+      shopstack.io/data-classification: confidential
+    includeSelectors: false

@@ -1,0 +1,23 @@
+# Deny-all baseline for the namespace. Individual services then punch holes in
+# it with their own NetworkPolicies (rendered by the shopstack-service chart).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    # Even a denied pod must be able to resolve names, otherwise operators see
+    # "connection refused" instead of "blocked by policy" during incidents.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

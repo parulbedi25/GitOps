@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shopstack-qa
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    shopstack.io/environment: qa
+    shopstack.io/managed-by: gitops
+  annotations:
+    shopstack.io/owner: qa-team@shopstack.example
+    shopstack.io/description: QA environment — pre-production verification, canary rehearsals and game days.

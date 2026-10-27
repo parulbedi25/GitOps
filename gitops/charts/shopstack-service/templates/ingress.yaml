@@ -1,0 +1,38 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "shopstack.fullname" . }}
+{{- $host := required "ingress.host is required when ingress.enabled=true" .Values.ingress.host }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "shopstack.labels" . | nindent 4 }}
+  annotations:
+    # Argo Rollouts uses this Ingress as the "stable" backend and clones it with
+    # canary annotations. Keep the name stable: it is referenced by the Rollout.
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      secretName: {{ required "ingress.tls.secretName is required when TLS is enabled" .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.path }}
+            pathType: {{ .Values.ingress.pathType }}
+            backend:
+              service:
+                name: {{ $fullname }}
+                port:
+                  name: http
+{{- end }}

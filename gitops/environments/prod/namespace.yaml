@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shopstack-prod
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    shopstack.io/environment: prod
+    shopstack.io/managed-by: gitops
+    shopstack.io/data-classification: confidential
+  annotations:
+    shopstack.io/owner: platform-team@shopstack.example
+    shopstack.io/description: Production — customer traffic, payments and orders. Change control applies.
+    shopstack.io/runbook: https://github.com/parulbedi25/GitOps/blob/main/docs/runbooks/README.md
