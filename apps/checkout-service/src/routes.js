@@ -92,7 +92,9 @@ export async function registerRoutes({ app, service, config }) {
     },
   );
 
-  app.get('/api/orders/:orderId', { schema: { response: { 200: orderSchema } } }, async (request) => service.getOrder(request.params.orderId));
+  app.get('/api/orders/:orderId', { schema: { response: { 200: orderSchema } } }, async (request) =>
+    service.getOrder(request.params.orderId),
+  );
 
   app.get(
     '/api/orders',
@@ -112,7 +114,9 @@ export async function registerRoutes({ app, service, config }) {
     async (request) => service.listOrders(request.query),
   );
 
-  app.post('/api/orders/:orderId/cancel', async (request) => service.cancelOrder(request.params.orderId, request.body?.reason));
+  app.post('/api/orders/:orderId/cancel', async (request) =>
+    service.cancelOrder(request.params.orderId, request.body?.reason),
+  );
 
   app.get('/internal/orders/stats', async () => service.repository.stats());
 

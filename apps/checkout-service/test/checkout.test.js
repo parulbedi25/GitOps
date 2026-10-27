@@ -20,11 +20,37 @@ class FakeWorld {
     this.paymentDeclined = paymentDeclined;
     this.cartStatus = cartStatus;
     this.items = items ?? [
-      { id: 'itm-sku-1001', productId: 'sku-1001', slug: 'atlas-anc-headphones', name: 'Atlas ANC Headphones', image: '/media/atlas.svg', unitPriceCents: 27900, quantity: 1 },
-      { id: 'itm-sku-1014', productId: 'sku-1014', slug: 'summit-insulated-bottle', name: 'Summit Bottle', image: '/media/bottle.svg', unitPriceCents: 3900, quantity: 2 },
+      {
+        id: 'itm-sku-1001',
+        productId: 'sku-1001',
+        slug: 'atlas-anc-headphones',
+        name: 'Atlas ANC Headphones',
+        image: '/media/atlas.svg',
+        unitPriceCents: 27900,
+        quantity: 1,
+      },
+      {
+        id: 'itm-sku-1014',
+        productId: 'sku-1014',
+        slug: 'summit-insulated-bottle',
+        name: 'Summit Bottle',
+        image: '/media/bottle.svg',
+        unitPriceCents: 3900,
+        quantity: 2,
+      },
     ];
-    this.totals = totals ?? { itemCount: 3, subtotalCents: 35700, shippingCents: 0, taxCents: 2945, totalCents: 38645, currency: 'USD' };
-    this.stock = new Map([['sku-1001', 42], ['sku-1014', 140]]);
+    this.totals = totals ?? {
+      itemCount: 3,
+      subtotalCents: 35700,
+      shippingCents: 0,
+      taxCents: 2945,
+      totalCents: 38645,
+      currency: 'USD',
+    };
+    this.stock = new Map([
+      ['sku-1001', 42],
+      ['sku-1014', 140],
+    ]);
     this.paymentRecords = new Map();
     this.locked = false;
     this.cartCleared = false;
@@ -33,7 +59,12 @@ class FakeWorld {
   #record(step) {
     this.calls.push(step);
     if (this.failAt === step) {
-      throw new AppError({ title: `Injected failure at ${step}`, status: 502, code: `upstream-${step}-failure`, retryable: true });
+      throw new AppError({
+        title: `Injected failure at ${step}`,
+        status: 502,
+        code: `upstream-${step}-failure`,
+        retryable: true,
+      });
     }
   }
 
@@ -85,7 +116,8 @@ class FakeWorld {
       }
       if (path.endsWith('/release')) {
         this.#record('catalog.release');
-        for (const item of this.items) this.stock.set(item.productId, (this.stock.get(item.productId) ?? 0) + item.quantity);
+        for (const item of this.items)
+          this.stock.set(item.productId, (this.stock.get(item.productId) ?? 0) + item.quantity);
         return { status: 'released' };
       }
       if (path.endsWith('/commit')) {
@@ -101,9 +133,19 @@ class FakeWorld {
       if (path === '/api/payments') {
         this.#record('payments.create');
         if (this.paymentDeclined) {
-          throw new AppError({ title: 'Payment declined', status: 402, code: 'payment-declined', detail: 'insufficient_funds' });
+          throw new AppError({
+            title: 'Payment declined',
+            status: 402,
+            code: 'payment-declined',
+            detail: 'insufficient_funds',
+          });
         }
-        const payment = { id: `pay_${this.paymentRecords.size + 1}`, status: 'authorized', method: body.paymentMethod, provider: { brand: 'visa', last4: '4242' } };
+        const payment = {
+          id: `pay_${this.paymentRecords.size + 1}`,
+          status: 'authorized',
+          method: body.paymentMethod,
+          provider: { brand: 'visa', last4: '4242' },
+        };
         this.paymentRecords.set(payment.id, payment);
         return payment;
       }
@@ -171,7 +213,12 @@ const key = () => `checkout-key-${++counter}-xyz`;
 describe('POST /api/checkout — happy path', () => {
   test('places an order, captures payment and clears the cart', async () => {
     const ctx = await buildApp();
-    const res = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
 
     assert.equal(res.statusCode, 201);
     const order = res.json();
@@ -182,7 +229,15 @@ describe('POST /api/checkout — happy path', () => {
     assert.equal(order.sagaId.startsWith('saga_'), true);
 
     const steps = order.timeline.filter((t) => t.status === 'succeeded').map((t) => t.step);
-    assert.deepEqual(steps, ['load_cart', 'lock_cart', 'reserve_stock', 'authorize_payment', 'capture_payment', 'commit_stock', 'persist_order']);
+    assert.deepEqual(steps, [
+      'load_cart',
+      'lock_cart',
+      'reserve_stock',
+      'authorize_payment',
+      'capture_payment',
+      'commit_stock',
+      'persist_order',
+    ]);
     assert.equal(ctx.world.cartCleared, true);
     assert.equal(ctx.world.stock.get('sku-1001'), 41);
     await ctx.app.close();
@@ -206,8 +261,18 @@ describe('POST /api/checkout — happy path', () => {
   test('returns the same order for a replayed idempotency key', async () => {
     const ctx = await buildApp();
     const idempotencyKey = key();
-    const first = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': idempotencyKey }, payload: payload() });
-    const second = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': idempotencyKey }, payload: payload() });
+    const first = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': idempotencyKey },
+      payload: payload(),
+    });
+    const second = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': idempotencyKey },
+      payload: payload(),
+    });
 
     assert.equal(first.statusCode, 201);
     assert.equal(second.statusCode, 200);
@@ -220,8 +285,18 @@ describe('POST /api/checkout — happy path', () => {
     const ctx = await buildApp();
     const idempotencyKey = key();
     const results = await Promise.all([
-      ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': idempotencyKey }, payload: payload() }),
-      ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': idempotencyKey }, payload: payload() }),
+      ctx.app.inject({
+        method: 'POST',
+        url: '/api/checkout',
+        headers: { 'idempotency-key': idempotencyKey },
+        payload: payload(),
+      }),
+      ctx.app.inject({
+        method: 'POST',
+        url: '/api/checkout',
+        headers: { 'idempotency-key': idempotencyKey },
+        payload: payload(),
+      }),
     ]);
     const ids = new Set(results.map((r) => r.json().id));
     assert.equal(ids.size, 1);
@@ -253,7 +328,12 @@ describe('POST /api/checkout — happy path', () => {
 describe('compensation', () => {
   test('a declined payment releases stock and unlocks the cart', async () => {
     const ctx = await buildApp({ paymentDeclined: true });
-    const res = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
 
     assert.equal(res.statusCode, 402);
     const problem = expectProblem(res.json(), 402);
@@ -270,7 +350,12 @@ describe('compensation', () => {
 
   test('a capture failure refunds the authorisation and releases stock', async () => {
     const ctx = await buildApp({ failAt: 'payments.capture' });
-    const res = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
 
     assert.equal(res.statusCode, 502);
     assert.equal(ctx.world.countCalls('payments.void'), 1, 'the authorisation hold is released');
@@ -283,7 +368,12 @@ describe('compensation', () => {
 
   test('a stock failure only unlocks the cart', async () => {
     const ctx = await buildApp({ failAt: 'catalog.reserve' });
-    const res = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
 
     assert.equal(res.statusCode, 502);
     assert.equal(ctx.world.countCalls('cart.unlock'), 1);
@@ -295,23 +385,40 @@ describe('compensation', () => {
   test('a failed attempt is stored for support but does not burn the idempotency key', async () => {
     const ctx = await buildApp({ failAt: 'catalog.reserve' });
     const idempotencyKey = key();
-    const failed = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': idempotencyKey }, payload: payload() });
+    const failed = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': idempotencyKey },
+      payload: payload(),
+    });
     assert.equal(failed.statusCode, 502);
 
-    const attempts = (await ctx.app.inject({ method: 'GET', url: '/api/orders?customerEmail=ada@example.com&limit=10' })).json();
+    const attempts = (
+      await ctx.app.inject({ method: 'GET', url: '/api/orders?customerEmail=ada@example.com&limit=10' })
+    ).json();
     assert.equal(attempts.total, 1);
     assert.equal(attempts.items[0].status, 'failed');
     assert.ok(attempts.items[0].failure.code);
 
     ctx.world.failAt = null;
-    const retry = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': idempotencyKey }, payload: payload() });
+    const retry = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': idempotencyKey },
+      payload: payload(),
+    });
     assert.equal(retry.statusCode, 201, 'the customer must be able to retry after a failure');
     await ctx.app.close();
   });
 
   test('rejects an empty cart before touching stock or payments', async () => {
     const ctx = await buildApp({ items: [] });
-    const res = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
     assert.equal(res.statusCode, 422);
     assert.equal(res.json().code, 'cart-empty');
     assert.equal(ctx.world.countCalls('payments.create'), 0);
@@ -320,7 +427,12 @@ describe('compensation', () => {
 
   test('refuses a cart that another checkout already locked', async () => {
     const ctx = await buildApp({ cartStatus: 'locked' });
-    const res = await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
     assert.equal(res.statusCode, 409);
     assert.equal(res.json().code, 'cart-locked');
     await ctx.app.close();
@@ -330,7 +442,14 @@ describe('compensation', () => {
 describe('orders API', () => {
   test('fetches an order by id and 404s for unknown ids', async () => {
     const ctx = await buildApp();
-    const created = (await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() })).json();
+    const created = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/checkout',
+        headers: { 'idempotency-key': key() },
+        payload: payload(),
+      })
+    ).json();
 
     const fetched = await ctx.app.inject({ method: 'GET', url: `/api/orders/${created.id}` });
     assert.equal(fetched.statusCode, 200);
@@ -343,7 +462,12 @@ describe('orders API', () => {
 
   test('lists orders by customer email', async () => {
     const ctx = await buildApp();
-    await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
     await ctx.app.inject({
       method: 'POST',
       url: '/api/checkout',
@@ -359,7 +483,12 @@ describe('orders API', () => {
 
   test('reports revenue stats for dashboards', async () => {
     const ctx = await buildApp();
-    await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
     const stats = (await ctx.app.inject({ method: 'GET', url: '/internal/orders/stats' })).json();
     assert.equal(stats.byStatus.confirmed, 1);
     assert.equal(stats.revenueCents, 38645);
@@ -369,17 +498,32 @@ describe('orders API', () => {
 
   test('cancels an order: refunds the payment and returns the stock', async () => {
     const ctx = await buildApp();
-    const order = (await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() })).json();
+    const order = (
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/api/checkout',
+        headers: { 'idempotency-key': key() },
+        payload: payload(),
+      })
+    ).json();
     assert.equal(ctx.world.stock.get('sku-1001'), 41);
 
-    const cancelled = await ctx.app.inject({ method: 'POST', url: `/api/orders/${order.id}/cancel`, payload: { reason: 'changed_mind' } });
+    const cancelled = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/orders/${order.id}/cancel`,
+      payload: { reason: 'changed_mind' },
+    });
     assert.equal(cancelled.statusCode, 200);
     assert.equal(cancelled.json().status, 'cancelled');
     assert.equal(cancelled.json().payment.status, 'refunded');
     assert.equal(ctx.world.stock.get('sku-1001'), 42);
     assert.equal(cancelled.json().cancellation.reason, 'changed_mind');
 
-    const again = await ctx.app.inject({ method: 'POST', url: `/api/orders/${order.id}/cancel`, payload: { reason: 'changed_mind' } });
+    const again = await ctx.app.inject({
+      method: 'POST',
+      url: `/api/orders/${order.id}/cancel`,
+      payload: { reason: 'changed_mind' },
+    });
     assert.equal(again.json().status, 'cancelled', 'cancellation is idempotent');
     assert.equal(ctx.world.countCalls('payments.refund'), 1, 'must not refund twice');
     await ctx.app.close();
@@ -387,7 +531,12 @@ describe('orders API', () => {
 
   test('exposes saga metrics', async () => {
     const ctx = await buildApp();
-    await ctx.app.inject({ method: 'POST', url: '/api/checkout', headers: { 'idempotency-key': key() }, payload: payload() });
+    await ctx.app.inject({
+      method: 'POST',
+      url: '/api/checkout',
+      headers: { 'idempotency-key': key() },
+      payload: payload(),
+    });
     const metricsText = (await ctx.app.inject({ method: 'GET', url: '/metrics' })).body;
     assert.match(metricsText, /shopstack_checkout_saga_duration_seconds/);
     assert.match(metricsText, /shopstack_checkout_step_duration_seconds/);

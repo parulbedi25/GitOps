@@ -57,7 +57,10 @@ export async function registerRoutes({ app, metrics, config, catalogClient, cart
 
   const assetCache = new Map();
 
-  const pageRenders = metrics.counter('shopstack_storefront_page_renders_total', 'Server-rendered pages.', ['page', 'status']);
+  const pageRenders = metrics.counter('shopstack_storefront_page_renders_total', 'Server-rendered pages.', [
+    'page',
+    'status',
+  ]);
   const renderDuration = metrics.histogram(
     'shopstack_storefront_render_duration_seconds',
     'Server-side render time per page.',
@@ -66,8 +69,14 @@ export async function registerRoutes({ app, metrics, config, catalogClient, cart
   );
   const addToCartTotal = metrics.counter('shopstack_storefront_add_to_cart_total', 'Add-to-bag actions.', ['result']);
   const checkoutStarted = metrics.counter('shopstack_storefront_checkout_started_total', 'Checkout pages served.');
-  const checkoutCompleted = metrics.counter('shopstack_storefront_checkout_completed_total', 'Checkouts submitted.', ['result']);
-  const downstreamErrors = metrics.counter('shopstack_storefront_downstream_errors_total', 'Downstream failures surfaced to the UI.', ['dependency']);
+  const checkoutCompleted = metrics.counter('shopstack_storefront_checkout_completed_total', 'Checkouts submitted.', [
+    'result',
+  ]);
+  const downstreamErrors = metrics.counter(
+    'shopstack_storefront_downstream_errors_total',
+    'Downstream failures surfaced to the UI.',
+    ['dependency'],
+  );
 
   const view = {
     version: config.SERVICE_VERSION,
@@ -261,7 +270,13 @@ export async function registerRoutes({ app, metrics, config, catalogClient, cart
       if (!cart) {
         return renderCart({ ...view, cart: null, totals: null, cartCount: 0, notice: request.query.notice });
       }
-      return renderCart({ ...view, cart: cart.cart, totals: cart.totals, cartCount: cart.totals.itemCount, notice: request.query.notice });
+      return renderCart({
+        ...view,
+        cart: cart.cart,
+        totals: cart.totals,
+        cartCount: cart.totals.itemCount,
+        notice: request.query.notice,
+      });
     });
   });
 
@@ -296,15 +311,20 @@ export async function registerRoutes({ app, metrics, config, catalogClient, cart
   app.post('/cart/items/:itemId', async (request, reply) => {
     const cartId = ensureCartId(request, reply);
     const quantity = Number.parseInt(request.body?.quantity ?? '1', 10);
-    await cartClient.patch(`/api/carts/${encodeURIComponent(cartId)}/items/${encodeURIComponent(request.params.itemId)}`, {
-      quantity: Number.isFinite(quantity) ? quantity : 1,
-    });
+    await cartClient.patch(
+      `/api/carts/${encodeURIComponent(cartId)}/items/${encodeURIComponent(request.params.itemId)}`,
+      {
+        quantity: Number.isFinite(quantity) ? quantity : 1,
+      },
+    );
     return reply.redirect('/cart', 303);
   });
 
   app.post('/cart/items/:itemId/remove', async (request, reply) => {
     const cartId = ensureCartId(request, reply);
-    await cartClient.delete(`/api/carts/${encodeURIComponent(cartId)}/items/${encodeURIComponent(request.params.itemId)}`);
+    await cartClient.delete(
+      `/api/carts/${encodeURIComponent(cartId)}/items/${encodeURIComponent(request.params.itemId)}`,
+    );
     return reply.redirect('/cart', 303);
   });
 
@@ -356,22 +376,25 @@ export async function registerRoutes({ app, metrics, config, catalogClient, cart
       checkoutCompleted.labels('failure').inc();
       request.log.warn({ err, code: err.code }, 'checkout failed');
       const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 503;
-      return reply.code(status).type('text/html; charset=utf-8').send(
-        await renderCheckout({
-          ...view,
-          cart: cart.cart,
-          totals: cart.totals,
-          idempotencyKey,
-          customer: { email: form.email, name: form.name },
-          error: {
-            title: err.code === 'payment-declined' ? 'Your card was declined' : 'We could not complete your order',
-            message:
-              err.code === 'payment-declined'
-                ? 'No money was taken and your bag is untouched. Try another card or use the test card 4242 4242 4242 4242.'
-                : `${err.detail ?? err.title}. Nothing was charged. Please try again.`,
-          },
-        }),
-      );
+      return reply
+        .code(status)
+        .type('text/html; charset=utf-8')
+        .send(
+          await renderCheckout({
+            ...view,
+            cart: cart.cart,
+            totals: cart.totals,
+            idempotencyKey,
+            customer: { email: form.email, name: form.name },
+            error: {
+              title: err.code === 'payment-declined' ? 'Your card was declined' : 'We could not complete your order',
+              message:
+                err.code === 'payment-declined'
+                  ? 'No money was taken and your bag is untouched. Try another card or use the test card 4242 4242 4242 4242.'
+                  : `${err.detail ?? err.title}. Nothing was charged. Please try again.`,
+            },
+          }),
+        );
     }
   });
 
@@ -389,9 +412,16 @@ export async function registerRoutes({ app, metrics, config, catalogClient, cart
         return renderOrder({ ...view, order });
       } catch (err) {
         if (err.status === 404) {
-          return reply.code(404).type('text/html; charset=utf-8').send(
-            renderOrderLookup({ ...view, orderId: request.params.orderId, error: 'We could not find an order with that number.' }),
-          );
+          return reply
+            .code(404)
+            .type('text/html; charset=utf-8')
+            .send(
+              renderOrderLookup({
+                ...view,
+                orderId: request.params.orderId,
+                error: 'We could not find an order with that number.',
+              }),
+            );
         }
         throw err;
       }

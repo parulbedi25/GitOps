@@ -1,0 +1,215 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Release — the only workflow allowed to produce an image that a cluster accepts.
+#
+#   verify    reuse ci.yaml: lint, format, 126 tests, manifest renders, policy test
+#   build     one image per service → ghcr.io/<owner>/shopstack/<service>
+#   scan      Trivy (CRITICAL/HIGH, fixed only) → SARIF + code scanning
+#   sign      cosign keyless signature + SPDX SBOM attestation, by digest
+#   promote   bump images.newTag in gitops/apps/overlays/dev/* (the GitOps hand-off)
+#
+# The signing identity this workflow produces is exactly what the Kyverno policy
+# `verify-image-signatures` pins in production:
+#
+#   issuer   https://token.actions.githubusercontent.com
+#   subject  https://github.com/parulbedi25/GitOps/.github/workflows/release.yaml@refs/heads/main
+#
+# Renaming this file silently breaks production admission control.
+# ─────────────────────────────────────────────────────────────────────────────
+name: release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/**"
+      - "packages/**"
+      - "gitops/charts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/release.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # cosign keyless signing
+  security-events: write # SARIF upload
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: shopstack
+  VERSION: "1.0.0"
+
+jobs:
+  verify:
+    name: verify commit
+    uses: ./.github/workflows/ci.yaml
+    permissions:
+      contents: read
+
+  build:
+    name: build · scan · sign — ${{ matrix.service }}
+    needs: verify
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - cart-service
+          - catalog-service
+          - payments-service
+          - checkout-service
+          - storefront
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image reference and tag
+        id: image
+        run: |
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          short="${GITHUB_SHA::7}"
+          echo "ref=${REGISTRY}/${owner}/${IMAGE_NAMESPACE}/${{ matrix.service }}" >> "$GITHUB_OUTPUT"
+          echo "tag=${VERSION}-${short}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6.9.0
+        with:
+          # The Dockerfiles install the shared @shopstack/telemetry workspace, so
+          # the build context is the repository root.
+          context: .
+          file: apps/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.ref }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.ref }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.image.outputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          provenance: true
+          sbom: false
+
+      # Scan the pushed digest, not the local build: that is the artefact a
+      # cluster will pull. A HIGH/CRITICAL finding stops the release here, before
+      # anything is signed and before any tag in Git moves.
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: ${{ steps.image.outputs.ref }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-${{ matrix.service }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Upload scan results
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.service }}.sarif
+          category: ${{ matrix.service }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0.20.9
+        with:
+          image: ${{ steps.image.outputs.ref }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service }}.spdx.json
+          artifact-name: sbom-${{ matrix.service }}
+
+      - uses: sigstore/cosign-installer@v3.9.2
+
+      # Keyless: the signature is bound to this workflow run's OIDC identity and
+      # recorded in the Rekor transparency log. Nothing long-lived to leak.
+      - name: Sign the digest
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Attest the SBOM
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign attest --yes \
+            --predicate "sbom-${{ matrix.service }}.spdx.json" \
+            --type spdxjson \
+            "${IMAGE}@${DIGEST}"
+
+  promote-dev:
+    name: promote dev
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.16.3
+
+      - uses: azure/setup-kubectl@v4.0.1
+        with:
+          version: v1.30.5
+
+      - name: Compute the release tag
+        id: release
+        run: echo "tag=${VERSION}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Dev is the environment allowed to move without a human: the commit that
+      # rewrites the pin *is* the deployment, and Argo CD does the rest.
+      - name: Pin dev to the new tag
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: scripts/promote.sh --service all --tag "$TAG" --env dev --yes --verify
+
+      - name: Commit the promotion
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git config user.name "shopstack-release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git add gitops/apps/overlays/dev
+          if git diff --cached --quiet; then
+            echo "dev already pins $TAG — nothing to commit"
+            exit 0
+          fi
+          git commit -m "promote(dev): ${TAG} [skip ci]"
+          git push origin HEAD:main
+
+      - name: Summary
+        run: |
+          {
+            echo "### Released \`${{ steps.release.outputs.tag }}\`"
+            echo
+            echo "| step | result |"
+            echo "| --- | --- |"
+            echo "| images | 5 pushed to \`${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/shopstack/*\` |"
+            echo "| scan | Trivy CRITICAL/HIGH, fixed only |"
+            echo "| sign | cosign keyless + SBOM attestation, by digest |"
+            echo "| dev | overlay pinned, Argo CD reconciling |"
+            echo
+            echo "Promote to QA: **Actions → promote** (\`--tag ${{ steps.release.outputs.tag }}\`)."
+          } >> "$GITHUB_STEP_SUMMARY"

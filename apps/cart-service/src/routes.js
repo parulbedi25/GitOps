@@ -82,7 +82,10 @@ export async function registerRoutes({ app, repository, metrics, config, catalog
     [],
     [500, 1000, 2500, 5000, 10000, 20000, 50000, 100000],
   );
-  const lockConflicts = metrics.counter('shopstack_cart_lock_conflicts_total', 'Optimistic concurrency conflicts on carts.');
+  const lockConflicts = metrics.counter(
+    'shopstack_cart_lock_conflicts_total',
+    'Optimistic concurrency conflicts on carts.',
+  );
   const locks = metrics.counter('shopstack_cart_lock_total', 'Cart lock transitions.', ['action']);
 
   /** Packages the cart with the pricing breakdown the UI needs. */
@@ -271,7 +274,10 @@ export async function registerRoutes({ app, repository, metrics, config, catalog
       if (request.params.cartId === request.body.sourceCartId) {
         throw badRequest('cannot merge a cart into itself', 'merge-same-cart');
       }
-      const [target, source] = await Promise.all([fetchCart(request.params.cartId), fetchCart(request.body.sourceCartId)]);
+      const [target, source] = await Promise.all([
+        fetchCart(request.params.cartId),
+        fetchCart(request.body.sourceCartId),
+      ]);
       if (!target || !source) throw notFound('Cart', !target ? request.params.cartId : request.body.sourceCartId);
       const merged = mergeCarts(target, source);
       await repository.delete(source.id);

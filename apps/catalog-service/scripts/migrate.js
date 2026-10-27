@@ -32,9 +32,7 @@ try {
     )
   `);
 
-  const applied = new Set(
-    (await client.query('select version from schema_migrations')).rows.map((row) => row.version),
-  );
+  const applied = new Set((await client.query('select version from schema_migrations')).rows.map((row) => row.version));
 
   const files = (await readdir(migrationsDir)).filter((file) => file.endsWith('.sql')).sort();
 

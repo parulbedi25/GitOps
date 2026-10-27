@@ -84,7 +84,10 @@ describe('catalogue reads', () => {
   test('sorts by price ascending', async () => {
     const body = (await ctx.app.inject({ url: '/api/products?sort=price_asc&limit=26' })).json();
     const prices = body.items.map((item) => item.priceCents);
-    assert.deepEqual(prices, [...prices].sort((a, b) => a - b));
+    assert.deepEqual(
+      prices,
+      [...prices].sort((a, b) => a - b),
+    );
   });
 
   test('hides out-of-stock products when asked', async () => {
@@ -131,7 +134,10 @@ describe('catalogue reads', () => {
   test('lists categories with live product counts', async () => {
     const { items } = (await ctx.app.inject({ url: '/api/categories' })).json();
     assert.equal(items.length, 8);
-    assert.equal(items.reduce((sum, item) => sum + item.count, 0), 26);
+    assert.equal(
+      items.reduce((sum, item) => sum + item.count, 0),
+      26,
+    );
     assert.ok(items.every((item) => item.slug && item.name && Number.isInteger(item.count)));
   });
 
@@ -209,7 +215,9 @@ describe('stock reservations', () => {
 
   test('releases stock when payment fails and reports the released state', async () => {
     const before = (await ctx.app.inject({ url: '/api/products/sku-1020' })).json().stock;
-    const { id } = (await reserve({ orderId: 'order-release', items: [{ productId: 'sku-1020', quantity: 2 }] })).json();
+    const { id } = (
+      await reserve({ orderId: 'order-release', items: [{ productId: 'sku-1020', quantity: 2 }] })
+    ).json();
     const released = await ctx.app.inject({ method: 'POST', url: `/internal/stock/reservations/${id}/release` });
 
     assert.equal(released.statusCode, 200);

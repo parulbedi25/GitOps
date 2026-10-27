@@ -1,7 +1,14 @@
 /**
  * Payments service entrypoint.
  */
-import { loadConfig, createLogger, createMetrics, HealthRegistry, createService, createChaosController } from '@shopstack/telemetry';
+import {
+  loadConfig,
+  createLogger,
+  createMetrics,
+  HealthRegistry,
+  createService,
+  createChaosController,
+} from '@shopstack/telemetry';
 import { configSchema } from './config.js';
 import { createPaymentRepository } from './repository.js';
 import { SimulatedProcessor } from './payments.js';
@@ -42,10 +49,14 @@ async function main() {
 
   const health = new HealthRegistry({ onEvent: (msg, meta) => logger.warn(meta ?? {}, msg) });
   health.register('payment-store', () => repository.healthCheck(), { critical: true });
-  health.register('psp-credentials', async () => ({
-    ok: Boolean(config.PSP_WEBHOOK_SECRET),
-    detail: config.PSP_WEBHOOK_SECRET ? 'webhook secret present' : 'webhook secret missing',
-  }), { critical: false });
+  health.register(
+    'psp-credentials',
+    async () => ({
+      ok: Boolean(config.PSP_WEBHOOK_SECRET),
+      detail: config.PSP_WEBHOOK_SECRET ? 'webhook secret present' : 'webhook secret missing',
+    }),
+    { critical: false },
+  );
 
   const chaos = createChaosController({ enabled: config.ALLOW_CHAOS, metrics, logger });
 

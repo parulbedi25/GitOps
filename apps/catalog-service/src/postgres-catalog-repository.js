@@ -45,13 +45,17 @@ const toProduct = (row) => ({
 
 export class PostgresCatalogRepository {
   static async create({ connectionString, logger, pool }) {
-    const repo = new PostgresCatalogRepository(pool ?? new Pool({
-      connectionString,
-      max: Number(process.env.DB_POOL_MAX ?? 10),
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 3_000,
-      application_name: 'catalog-service',
-    }), logger);
+    const repo = new PostgresCatalogRepository(
+      pool ??
+        new Pool({
+          connectionString,
+          max: Number(process.env.DB_POOL_MAX ?? 10),
+          idleTimeoutMillis: 30_000,
+          connectionTimeoutMillis: 3_000,
+          application_name: 'catalog-service',
+        }),
+      logger,
+    );
     await repo.pool.query('SELECT 1');
     return repo;
   }
@@ -71,7 +75,9 @@ export class PostgresCatalogRepository {
     if (inStockOnly) where.push('stock > 0');
     if (q) {
       values.push(`%${q}%`);
-      where.push(`(name ILIKE $${values.length} OR description ILIKE $${values.length} OR array_to_string(tags, ' ') ILIKE $${values.length})`);
+      where.push(
+        `(name ILIKE $${values.length} OR description ILIKE $${values.length} OR array_to_string(tags, ' ') ILIKE $${values.length})`,
+      );
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const orderSql = SORT_SQL[sort] ?? SORT_SQL.relevance;
@@ -118,7 +124,9 @@ export class PostgresCatalogRepository {
          JOIN stock_reservations r ON r.id = i.reservation_id
         WHERE i.product_id = p.id AND r.status = 'pending' AND r.expires_at < now()`,
     );
-    await client.query(`UPDATE stock_reservations SET status = 'released' WHERE status = 'pending' AND expires_at < now()`);
+    await client.query(
+      `UPDATE stock_reservations SET status = 'released' WHERE status = 'pending' AND expires_at < now()`,
+    );
   }
 
   async reserve({ orderId, items, ttlMs = RESERVATION_TTL_MS }) {
@@ -162,7 +170,10 @@ export class PostgresCatalogRepository {
       );
 
       for (const id of ids) {
-        await client.query('UPDATE products SET stock = stock - $2, updated_at = now() WHERE id = $1', [id, quantities.get(id)]);
+        await client.query('UPDATE products SET stock = stock - $2, updated_at = now() WHERE id = $1', [
+          id,
+          quantities.get(id),
+        ]);
         await client.query(
           'INSERT INTO stock_reservation_items (reservation_id, product_id, quantity) VALUES ($1, $2, $3)',
           [reservationId, id, quantities.get(id)],
@@ -180,7 +191,10 @@ export class PostgresCatalogRepository {
   }
 
   async #withItems(row, client = this.pool) {
-    const { rows } = await client.query('SELECT product_id, quantity FROM stock_reservation_items WHERE reservation_id = $1', [row.id]);
+    const { rows } = await client.query(
+      'SELECT product_id, quantity FROM stock_reservation_items WHERE reservation_id = $1',
+      [row.id],
+    );
     return {
       id: row.id,
       orderId: row.order_id,

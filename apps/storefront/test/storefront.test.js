@@ -43,7 +43,16 @@ const PRODUCTS = [
   },
 ];
 
-const TOTALS = { itemCount: 1, subtotalCents: 27900, shippingCents: 0, taxCents: 2302, totalCents: 30202, currency: 'USD', freeShippingThresholdCents: 7500, amountToFreeShippingCents: 0 };
+const TOTALS = {
+  itemCount: 1,
+  subtotalCents: 27900,
+  shippingCents: 0,
+  taxCents: 2302,
+  totalCents: 30202,
+  currency: 'USD',
+  freeShippingThresholdCents: 7500,
+  amountToFreeShippingCents: 0,
+};
 
 /** Fixture-driven stand-ins for the three downstream APIs. */
 function makeClients({ failCatalog = false, checkoutError = null } = {}) {
@@ -52,7 +61,8 @@ function makeClients({ failCatalog = false, checkoutError = null } = {}) {
   const catalog = {
     get: async (path, opts) => {
       state.calls.push(`catalog:${path}`);
-      if (failCatalog) throw new AppError({ title: 'Upstream dependency failed', status: 502, code: 'upstream-catalog-unreachable' });
+      if (failCatalog)
+        throw new AppError({ title: 'Upstream dependency failed', status: 502, code: 'upstream-catalog-unreachable' });
       if (path === '/api/products') {
         const q = opts?.query?.q?.toLowerCase();
         const category = opts?.query?.category;
@@ -62,7 +72,12 @@ function makeClients({ failCatalog = false, checkoutError = null } = {}) {
         return { items, total: items.length, limit: 24, offset: 0, nextOffset: null };
       }
       if (path === '/api/categories') {
-        return { items: [{ slug: 'audio', name: 'Audio', count: 1 }, { slug: 'workspace', name: 'Workspace', count: 1 }] };
+        return {
+          items: [
+            { slug: 'audio', name: 'Audio', count: 1 },
+            { slug: 'workspace', name: 'Workspace', count: 1 },
+          ],
+        };
       }
       if (path.endsWith('/related')) return { items: [PRODUCTS[1]] };
       const slug = decodeURIComponent(path.split('/').pop());
@@ -82,12 +97,20 @@ function makeClients({ failCatalog = false, checkoutError = null } = {}) {
       state.calls.push(`cart:POST ${path}`);
       if (path.endsWith('/items')) {
         if (!state.cart) {
-          state.cart = { cart: { id: 'cart-1', status: 'open', currency: 'USD', items: [] }, totals: { ...TOTALS, itemCount: 0, subtotalCents: 0, taxCents: 0, totalCents: 0 } };
+          state.cart = {
+            cart: { id: 'cart-1', status: 'open', currency: 'USD', items: [] },
+            totals: { ...TOTALS, itemCount: 0, subtotalCents: 0, taxCents: 0, totalCents: 0 },
+          };
         }
         const product = PRODUCTS.find((p) => p.id === body.productId);
         if (!product) throw new AppError({ title: 'Product not found', status: 404, code: 'not-found' });
         if (body.quantity > product.stock) {
-          throw new AppError({ title: 'Not enough stock', status: 409, code: 'insufficient-stock', detail: `only ${product.stock} units` });
+          throw new AppError({
+            title: 'Not enough stock',
+            status: 409,
+            code: 'insufficient-stock',
+            detail: `only ${product.stock} units`,
+          });
         }
         const existing = state.cart.cart.items.find((i) => i.productId === body.productId);
         if (existing) existing.quantity += body.quantity;
@@ -119,7 +142,16 @@ function makeClients({ failCatalog = false, checkoutError = null } = {}) {
         status: 'confirmed',
         customer: body.customer,
         shippingAddress: body.shippingAddress,
-        items: [{ productId: 'sku-1001', name: 'Atlas ANC Headphones', image: '/media/x.svg', unitPriceCents: 27900, quantity: 1, lineTotalCents: 27900 }],
+        items: [
+          {
+            productId: 'sku-1001',
+            name: 'Atlas ANC Headphones',
+            image: '/media/x.svg',
+            unitPriceCents: 27900,
+            quantity: 1,
+            lineTotalCents: 27900,
+          },
+        ],
         pricing: TOTALS,
         payment: { id: 'pay_1', status: 'captured', method: { type: 'card' }, provider: { last4: '4242' } },
         timeline: [{ step: 'load_cart', status: 'succeeded', at: '2026-10-27T10:00:00.000Z' }],
@@ -150,7 +182,15 @@ async function buildApp(clientOptions) {
     health,
     chaos: createChaosController({ enabled: false }),
     security: { frameOptions: false },
-    routes: (app) => registerRoutes({ app, metrics, config, catalogClient: clients.catalog, cartClient: clients.cart, checkoutClient: clients.checkout }),
+    routes: (app) =>
+      registerRoutes({
+        app,
+        metrics,
+        config,
+        catalogClient: clients.catalog,
+        cartClient: clients.cart,
+        checkoutClient: clients.checkout,
+      }),
   });
   service.markReady();
   return { ...service, clients };
@@ -294,7 +334,12 @@ describe('checkout flow', () => {
 
   test('renders the checkout form with an idempotency key', async () => {
     const app = await buildApp();
-    await app.app.inject({ method: 'POST', url: '/cart/items', headers: { cookie: 'ss_cart=cart-co' }, payload: { productId: 'sku-1001', quantity: 1 } });
+    await app.app.inject({
+      method: 'POST',
+      url: '/cart/items',
+      headers: { cookie: 'ss_cart=cart-co' },
+      payload: { productId: 'sku-1001', quantity: 1 },
+    });
     const res = await app.app.inject({ method: 'GET', url: '/checkout', headers: { cookie: 'ss_cart=cart-co' } });
     assert.equal(res.statusCode, 200);
     assert.match(res.body, /name="idempotencyKey" value="checkout-/);
@@ -304,7 +349,12 @@ describe('checkout flow', () => {
 
   test('places an order and redirects to the confirmation page', async () => {
     const app = await buildApp();
-    await app.app.inject({ method: 'POST', url: '/cart/items', headers: { cookie: 'ss_cart=cart-co2' }, payload: { productId: 'sku-1001', quantity: 1 } });
+    await app.app.inject({
+      method: 'POST',
+      url: '/cart/items',
+      headers: { cookie: 'ss_cart=cart-co2' },
+      payload: { productId: 'sku-1001', quantity: 1 },
+    });
     const res = await app.app.inject({
       method: 'POST',
       url: '/checkout',
@@ -329,12 +379,26 @@ describe('checkout flow', () => {
     const app = await buildApp({
       checkoutError: new AppError({ title: 'Payment declined', status: 402, code: 'payment-declined' }),
     });
-    await app.app.inject({ method: 'POST', url: '/cart/items', headers: { cookie: 'ss_cart=cart-decl' }, payload: { productId: 'sku-1001', quantity: 1 } });
+    await app.app.inject({
+      method: 'POST',
+      url: '/cart/items',
+      headers: { cookie: 'ss_cart=cart-decl' },
+      payload: { productId: 'sku-1001', quantity: 1 },
+    });
     const res = await app.app.inject({
       method: 'POST',
       url: '/checkout',
       headers: { cookie: 'ss_cart=cart-decl' },
-      payload: { idempotencyKey: 'checkout-decl', email: 'a@b.co', name: 'A', line1: 'x street', city: 'London', postalCode: 'EC1', country: 'GB', cardNumber: '4000 0000 0000 0002' },
+      payload: {
+        idempotencyKey: 'checkout-decl',
+        email: 'a@b.co',
+        name: 'A',
+        line1: 'x street',
+        city: 'London',
+        postalCode: 'EC1',
+        country: 'GB',
+        cardNumber: '4000 0000 0000 0002',
+      },
     });
     assert.equal(res.statusCode, 402);
     assert.match(res.body, /Your card was declined/);
@@ -344,12 +408,26 @@ describe('checkout flow', () => {
 
   test('renders the order confirmation with a timeline', async () => {
     const app = await buildApp();
-    await app.app.inject({ method: 'POST', url: '/cart/items', headers: { cookie: 'ss_cart=cart-ord' }, payload: { productId: 'sku-1001', quantity: 1 } });
+    await app.app.inject({
+      method: 'POST',
+      url: '/cart/items',
+      headers: { cookie: 'ss_cart=cart-ord' },
+      payload: { productId: 'sku-1001', quantity: 1 },
+    });
     await app.app.inject({
       method: 'POST',
       url: '/checkout',
       headers: { cookie: 'ss_cart=cart-ord' },
-      payload: { idempotencyKey: 'checkout-ord', email: 'a@b.co', name: 'A', line1: 'x street', city: 'London', postalCode: 'EC1', country: 'GB', cardNumber: '4242424242424242' },
+      payload: {
+        idempotencyKey: 'checkout-ord',
+        email: 'a@b.co',
+        name: 'A',
+        line1: 'x street',
+        city: 'London',
+        postalCode: 'EC1',
+        country: 'GB',
+        cardNumber: '4242424242424242',
+      },
     });
     const res = await app.app.inject({ method: 'GET', url: '/orders/ord_test_1' });
     assert.equal(res.statusCode, 200);

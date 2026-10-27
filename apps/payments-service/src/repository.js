@@ -133,7 +133,9 @@ export class PostgresPaymentRepository {
   }
 
   async findByOrderId(orderId) {
-    const { rows } = await this.pool.query('SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC', [orderId]);
+    const { rows } = await this.pool.query('SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC', [
+      orderId,
+    ]);
     return rows.map((row) => this.#toRecord(row));
   }
 

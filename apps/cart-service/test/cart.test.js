@@ -15,9 +15,33 @@ const config = testConfig({
 });
 
 const FIXTURES = {
-  'sku-1001': { id: 'sku-1001', slug: 'atlas-anc-headphones', name: 'Atlas ANC Headphones', priceCents: 27900, currency: 'USD', stock: 42, image: '/media/atlas.svg' },
-  'sku-1014': { id: 'sku-1014', slug: 'summit-insulated-bottle', name: 'Summit Bottle', priceCents: 3900, currency: 'USD', stock: 140, image: '/media/bottle.svg' },
-  'sku-1008': { id: 'sku-1008', slug: 'glide-ergonomic-mouse', name: 'Glide Mouse', priceCents: 7900, currency: 'USD', stock: 4, image: '/media/mouse.svg' },
+  'sku-1001': {
+    id: 'sku-1001',
+    slug: 'atlas-anc-headphones',
+    name: 'Atlas ANC Headphones',
+    priceCents: 27900,
+    currency: 'USD',
+    stock: 42,
+    image: '/media/atlas.svg',
+  },
+  'sku-1014': {
+    id: 'sku-1014',
+    slug: 'summit-insulated-bottle',
+    name: 'Summit Bottle',
+    priceCents: 3900,
+    currency: 'USD',
+    stock: 140,
+    image: '/media/bottle.svg',
+  },
+  'sku-1008': {
+    id: 'sku-1008',
+    slug: 'glide-ergonomic-mouse',
+    name: 'Glide Mouse',
+    priceCents: 7900,
+    currency: 'USD',
+    stock: 4,
+    image: '/media/mouse.svg',
+  },
 };
 
 /** Stand-in for the real HTTP client; proves the route layer is testable in isolation. */
@@ -132,10 +156,18 @@ describe('cart lifecycle', () => {
     const added = await add('cart-patch', 'sku-1001', 2);
     const itemId = added.json().cart.items[0].id;
 
-    const patched = await ctx.app.inject({ method: 'PATCH', url: `/api/carts/cart-patch/items/${itemId}`, payload: { quantity: 3 } });
+    const patched = await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/carts/cart-patch/items/${itemId}`,
+      payload: { quantity: 3 },
+    });
     assert.equal(patched.json().cart.items[0].quantity, 3);
 
-    const removed = await ctx.app.inject({ method: 'PATCH', url: `/api/carts/cart-patch/items/${itemId}`, payload: { quantity: 0 } });
+    const removed = await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/carts/cart-patch/items/${itemId}`,
+      payload: { quantity: 0 },
+    });
     assert.deepEqual(removed.json().cart.items, []);
   });
 
@@ -198,11 +230,19 @@ describe('checkout coordination', () => {
   test('rejects writes when the cart changed underneath (optimistic concurrency)', async () => {
     const repo = new MemoryCartRepository({ ttlSeconds: 60 });
     const isolated = await buildApp({ repository: repo });
-    await isolated.app.inject({ method: 'POST', url: '/api/carts/cart-race/items', payload: { productId: 'sku-1001', quantity: 1 } });
+    await isolated.app.inject({
+      method: 'POST',
+      url: '/api/carts/cart-race/items',
+      payload: { productId: 'sku-1001', quantity: 1 },
+    });
 
     const original = repo.update.bind(repo);
     repo.update = async () => null; // simulate another writer winning the race
-    const res = await isolated.app.inject({ method: 'POST', url: '/api/carts/cart-race/items', payload: { productId: 'sku-1014', quantity: 1 } });
+    const res = await isolated.app.inject({
+      method: 'POST',
+      url: '/api/carts/cart-race/items',
+      payload: { productId: 'sku-1014', quantity: 1 },
+    });
     assert.equal(res.statusCode, 409);
     assert.equal(res.json().code, 'cart-version-conflict');
     repo.update = original;

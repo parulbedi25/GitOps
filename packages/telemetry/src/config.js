@@ -70,7 +70,10 @@ export function loadConfig(schema = baseConfigSchema) {
   const result = schema.safeParse(process.env);
   if (!result.success) {
     const details = result.error.issues
-      .map((issue) => `  ${issue.path.join('.')}: ${issue.message} (received ${JSON.stringify(process.env[issue.path[0]])})`)
+      .map(
+        (issue) =>
+          `  ${issue.path.join('.')}: ${issue.message} (received ${JSON.stringify(process.env[issue.path[0]])})`,
+      )
       .join('\n');
     throw new Error(`invalid configuration:\n${details}`);
   }

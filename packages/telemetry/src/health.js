@@ -95,5 +95,8 @@ export class HealthRegistry {
 export async function probeHandler(health, { startup = false } = {}) {
   const result = await health.check();
   const ready = startup ? health.ready && result.status !== 'fail' : result.status !== 'fail';
-  return { statusCode: ready ? 200 : 503, body: { status: ready ? result.status : 'fail', ...result, ready: health.ready } };
+  return {
+    statusCode: ready ? 200 : 503,
+    body: { status: ready ? result.status : 'fail', ...result, ready: health.ready },
+  };
 }

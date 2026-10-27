@@ -1,0 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# The root Application — entry point of the app-of-apps tree for QA.
+#
+#   kubectl apply -f gitops/bootstrap/root-app-qa.yaml
+#
+# From here on, nothing is applied by hand. This Application syncs
+# gitops/clusters/qa, which declares the AppProjects, the namespaces, the
+# controllers, the policies, the observability stack and one Application per
+# service. Argo CD then reconciles that tree forever.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopstack-root
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shopstack
+    shopstack.io/tier: root
+    shopstack.io/environment: qa
+  annotations:
+    # The root is the one object that can never be deleted by a child.
+    argocd.argoproj.io/sync-options: Prune=false
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  source:
+    repoURL: https://github.com/parulbedi25/GitOps.git
+    targetRevision: main
+    path: gitops/clusters/qa
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+  revisionHistoryLimit: 10

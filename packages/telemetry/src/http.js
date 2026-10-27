@@ -9,8 +9,7 @@ const SAFE_DEFAULTS = {
 };
 
 /** The storefront adds image/form directives; APIs never serve HTML. */
-const API_CSP =
-  "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+const API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 export function requestId(request) {
   const header = request.headers['x-request-id'];
@@ -44,31 +43,37 @@ export function installHttpLayer(app, { config, metrics }) {
     if (error.validation) {
       const code = 'validation-failed';
       reply.errorCode = code;
-      return reply.code(400).type('application/problem+json').send({
-        type: `https://errors.shopstack.dev/${code}`,
-        title: 'Request validation failed',
-        status: 400,
-        code,
-        detail: error.message,
-        errors: error.validation.map((issue) => ({
-          path: issue.instancePath || issue.params?.missingProperty || '/',
-          message: issue.message,
-        })),
-        traceId: request.id,
-      });
+      return reply
+        .code(400)
+        .type('application/problem+json')
+        .send({
+          type: `https://errors.shopstack.dev/${code}`,
+          title: 'Request validation failed',
+          status: 400,
+          code,
+          detail: error.message,
+          errors: error.validation.map((issue) => ({
+            path: issue.instancePath || issue.params?.missingProperty || '/',
+            message: issue.message,
+          })),
+          traceId: request.id,
+        });
     }
 
     if (error.statusCode && error.statusCode < 500) {
       const code = error.code ?? 'bad-request';
       reply.errorCode = code;
-      return reply.code(error.statusCode).type('application/problem+json').send({
-        type: `https://errors.shopstack.dev/${code}`,
-        title: error.name || 'Bad request',
-        status: error.statusCode,
-        code,
-        detail: error.message,
-        traceId: request.id,
-      });
+      return reply
+        .code(error.statusCode)
+        .type('application/problem+json')
+        .send({
+          type: `https://errors.shopstack.dev/${code}`,
+          title: error.name || 'Bad request',
+          status: error.statusCode,
+          code,
+          detail: error.message,
+          traceId: request.id,
+        });
     }
 
     // Anything else is a bug. Log it in full, tell the client nothing.
@@ -86,14 +91,17 @@ export function installHttpLayer(app, { config, metrics }) {
 
   app.setNotFoundHandler((request, reply) => {
     reply.errorCode = 'route-not-found';
-    return reply.code(404).type('application/problem+json').send({
-      type: 'https://errors.shopstack.dev/route-not-found',
-      title: 'Not found',
-      status: 404,
-      code: 'route-not-found',
-      detail: `No route for ${request.method} ${request.url.split('?')[0]}`,
-      traceId: request.id,
-    });
+    return reply
+      .code(404)
+      .type('application/problem+json')
+      .send({
+        type: 'https://errors.shopstack.dev/route-not-found',
+        title: 'Not found',
+        status: 404,
+        code: 'route-not-found',
+        detail: `No route for ${request.method} ${request.url.split('?')[0]}`,
+        traceId: request.id,
+      });
   });
 
   // One structured line per request. The route template, not the raw URL, keeps
