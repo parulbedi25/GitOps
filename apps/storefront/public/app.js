@@ -10,14 +10,10 @@
     if (!badge) return;
     badge.textContent = String(count);
     badge.hidden = count === 0;
-    badge.animate?.(
-      [
-        { transform: 'scale(1)' },
-        { transform: 'scale(1.35)' },
-        { transform: 'scale(1)' },
-      ],
-      { duration: 260, easing: 'ease-out' },
-    );
+    badge.animate?.([{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], {
+      duration: 260,
+      easing: 'ease-out',
+    });
   }
 
   function toast(message) {

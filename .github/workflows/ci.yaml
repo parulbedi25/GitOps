@@ -1,0 +1,145 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI — everything that must be true before a change can reach a cluster.
+#
+#   unit       lint, format, 126 tests
+#   manifests  render all 15 overlays + the chart + the policy overlays, lint YAML
+#
+# The release workflow calls this file as a reusable workflow (`workflow_call`),
+# so an image can never be built from a commit that fails its own checks.
+# ─────────────────────────────────────────────────────────────────────────────
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  HELM_VERSION: v3.16.3
+  KUBECTL_VERSION: v1.30.5
+  YAMLLINT_VERSION: "1.35.1"
+
+jobs:
+  unit:
+    name: lint · format · test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Format
+        run: npx prettier --check .
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+  manifests:
+    name: render · lint manifests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app overlays inflate a local Helm chart and the platform stacks
+      # inflate upstream ones: Helm and Kustomize must be on PATH before the
+      # render checks run.
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - uses: azure/setup-kubectl@v4.0.1
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Install yamllint
+        run: pipx install yamllint==${{ env.YAMLLINT_VERSION }}
+
+      # --offline skips the upstream chart downloads (no repo access in CI by
+      # design: the reviewable artefacts are all in this repository).
+      - name: Validate manifests
+        run: scripts/validate-manifests.sh --offline
+
+      - name: Validate shell and scripts
+        run: |
+          shellcheck --version >/dev/null
+          shellcheck scripts/*.sh gitops/bootstrap/*.sh
+
+  policies:
+    name: policy self-test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4.0.1
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Every environment renders its policy set
+        run: |
+          for env in dev qa prod; do
+            kubectl kustomize "security/policies/overlays/$env" > "/tmp/policies-$env.yaml"
+          done
+
+      # A policy that silently fails to differ per environment is a policy that
+      # does not exist: prove the enforcement levels are what the overlays claim.
+      - name: Enforcement levels match the overlay intent
+        run: |
+          set -euo pipefail
+
+          # Expected split, per environment: dev is a warning system, prod is a wall.
+          #   dev  : 9 Audit  / 1 Enforce  (disallow-default-namespace)
+          #   qa   : 7 Audit  / 3 Enforce  (labels, latest tag, default namespace)
+          #   prod : 1 Audit  / 9 Enforce  (require-image-digest ratchets last)
+          check() {
+            local env="$1" want_audit="$2" want_enforce="$3" file="/tmp/policies-$1.yaml"
+            local audit enforce
+            audit=$(grep -c '^  validationFailureAction: Audit' "$file" || true)
+            enforce=$(grep -c '^  validationFailureAction: Enforce' "$file" || true)
+            echo "$env: $audit audit / $enforce enforce"
+            [ "$audit" = "$want_audit" ] && [ "$enforce" = "$want_enforce" ] || {
+              echo "::error::$env expected $want_audit audit / $want_enforce enforce"
+              return 1
+            }
+          }
+
+          check dev 9 1
+          check qa 7 3
+          check prod 1 9
+
+      # Signature verification is patched at the *rule* level, one layer below the
+      # ClusterPolicy action: prove the ratchet (Audit outside prod, Enforce in prod).
+      - name: Signature policy ratchets at rule level
+        run: |
+          set -euo pipefail
+          action() {
+            awk '/name: verify-image-signatures/,/required: true/' "$1" |
+              grep -m1 'failureAction:' | tr -d ' '
+          }
+          dev=$(action /tmp/policies-dev.yaml)
+          prod=$(action /tmp/policies-prod.yaml)
+          echo "dev  $dev"
+          echo "prod $prod"
+          [ "$dev" = "failureAction:Audit" ]
+          [ "$prod" = "failureAction:Enforce" ]

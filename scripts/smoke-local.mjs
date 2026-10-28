@@ -92,7 +92,10 @@ async function main() {
     check(`${name} is live (/healthz 200)`, live.status === 200, `status ${live.status}`);
     check(`${name} is ready (/readyz 200)`, ready.status === 200, `status ${ready.status}`);
     const metrics = await request(`${url}/metrics`);
-    check(`${name} exposes shopstack_ metrics`, metrics.status === 200 && metrics.text.includes('shopstack_http_requests_total'));
+    check(
+      `${name} exposes shopstack_ metrics`,
+      metrics.status === 200 && metrics.text.includes('shopstack_http_requests_total'),
+    );
   }
 
   section('Storefront rendering');
@@ -122,7 +125,11 @@ async function main() {
     jar,
     body: form({ productId: sku, quantity: '1', returnTo: '/cart' }),
   });
-  check('add to bag redirects back to the cart', add.status === 303 && add.location.endsWith('/cart'), `${add.status} ${add.location}`);
+  check(
+    'add to bag redirects back to the cart',
+    add.status === 303 && add.location.endsWith('/cart'),
+    `${add.status} ${add.location}`,
+  );
 
   const cart = await request(`${BASE}/cart`, { jar });
   check('cart shows the item', cart.text.includes('Atlas ANC Headphones'));
@@ -146,7 +153,11 @@ async function main() {
       cardNumber: '4242 4242 4242 4242',
     }),
   });
-  check('order is accepted and redirected to the confirmation', placed.status === 303 && /\/orders\/ord_/.test(placed.location ?? ''), `${placed.status} ${placed.location}`);
+  check(
+    'order is accepted and redirected to the confirmation',
+    placed.status === 303 && /\/orders\/ord_/.test(placed.location ?? ''),
+    `${placed.status} ${placed.location}`,
+  );
 
   if (placed.location) {
     const order = await request(new URL(placed.location, BASE).toString(), { jar });
@@ -155,13 +166,21 @@ async function main() {
   }
 
   const stockAfter = await stockOf(sku);
-  check('stock was decremented by exactly one', stockBefore !== null && stockAfter === stockBefore - 1, `${stockBefore} → ${stockAfter}`);
+  check(
+    'stock was decremented by exactly one',
+    stockBefore !== null && stockAfter === stockBefore - 1,
+    `${stockBefore} → ${stockAfter}`,
+  );
 
   section('Failure path: declined card is fully compensated');
   const declineSku = 'sku-1014';
   const declineStockBefore = await stockOf(declineSku);
   const jar2 = new Jar();
-  await request(`${BASE}/cart/items`, { method: 'POST', jar: jar2, body: form({ productId: declineSku, quantity: '1' }) });
+  await request(`${BASE}/cart/items`, {
+    method: 'POST',
+    jar: jar2,
+    body: form({ productId: declineSku, quantity: '1' }),
+  });
 
   const checkoutPage2 = await request(`${BASE}/checkout`, { jar: jar2 });
   const key2 = checkoutPage2.text.match(/name="idempotencyKey" value="([^"]+)"/)?.[1];
@@ -183,7 +202,11 @@ async function main() {
   check('declined page explains nothing was charged', /No money was taken/i.test(declined.text));
 
   const declineStockAfter = await stockOf(declineSku);
-  check('stock is restored after the saga compensates', declineStockAfter === declineStockBefore, `${declineStockBefore} → ${declineStockAfter}`);
+  check(
+    'stock is restored after the saga compensates',
+    declineStockAfter === declineStockBefore,
+    `${declineStockBefore} → ${declineStockAfter}`,
+  );
 
   section('Observability contract');
   const metrics = await request(`${BASE}/metrics`);
@@ -197,7 +220,9 @@ async function main() {
   const orders = await request(`${SERVICES.checkout}/internal/orders/stats`, { json: true });
   check('checkout reports order statistics', orders.status === 200);
 
-  console.log(`\n${failures.length === 0 ? '\u001b[32m' : '\u001b[31m'}${passed} checks passed, ${failures.length} failed\u001b[0m\n`);
+  console.log(
+    `\n${failures.length === 0 ? '\u001b[32m' : '\u001b[31m'}${passed} checks passed, ${failures.length} failed\u001b[0m\n`,
+  );
   if (failures.length > 0) {
     for (const failure of failures) console.error(`  failed: ${failure.name} ${failure.detail}`);
     process.exit(1);

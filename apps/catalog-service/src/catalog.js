@@ -107,7 +107,11 @@ export class MemoryCatalogRepository {
     const existing = [...this.reservations.values()].find((r) => r.orderId === orderId);
     if (existing) {
       if (existing.status === 'pending' || existing.status === 'committed') return existing;
-      throw conflict('Reservation already released', `order ${orderId} previously released its stock`, 'reservation-released');
+      throw conflict(
+        'Reservation already released',
+        `order ${orderId} previously released its stock`,
+        'reservation-released',
+      );
     }
 
     const shortages = [];
@@ -121,7 +125,12 @@ export class MemoryCatalogRepository {
         continue;
       }
       if (product.stock < quantity) {
-        shortages.push({ productId: product.id, requested: quantity, available: product.stock, reason: 'insufficient-stock' });
+        shortages.push({
+          productId: product.id,
+          requested: quantity,
+          available: product.stock,
+          reason: 'insufficient-stock',
+        });
       }
     }
     if (shortages.length > 0) throw new InsufficientStockError(shortages);

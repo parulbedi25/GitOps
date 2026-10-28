@@ -158,7 +158,14 @@ export class PostgresOrderRepository {
           SET status = $2, payment = $3, timeline = $4, cancellation = $5, failure = $6, updated_at = now()
         WHERE id = $1
         RETURNING *`,
-      [order.id, order.status, order.payment, JSON.stringify(order.timeline), order.cancellation ?? null, order.failure ?? null],
+      [
+        order.id,
+        order.status,
+        order.payment,
+        JSON.stringify(order.timeline),
+        order.cancellation ?? null,
+        order.failure ?? null,
+      ],
     );
     return rows[0] ? this.#toRecord(rows[0]) : null;
   }
@@ -178,7 +185,10 @@ export class PostgresOrderRepository {
     const params = customerEmail ? [limit, offset, customerEmail] : [limit, offset];
     const [rows, count] = await Promise.all([
       this.pool.query(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, params),
-      this.pool.query(`SELECT count(*)::int AS total FROM orders ${customerEmail ? `WHERE lower(customer->>'email') = lower($1)` : ''}`, customerEmail ? [customerEmail] : []),
+      this.pool.query(
+        `SELECT count(*)::int AS total FROM orders ${customerEmail ? `WHERE lower(customer->>'email') = lower($1)` : ''}`,
+        customerEmail ? [customerEmail] : [],
+      ),
     ]);
     return { items: rows.rows.map((row) => this.#toRecord(row)), total: count.rows[0].total };
   }

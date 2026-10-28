@@ -79,7 +79,12 @@ export function createHttpClient({
         // contract is an implementation detail the caller must not depend on.
         const error =
           response.status < 500 && !passthrough4xx
-            ? new AppError({ title: `${name} rejected the request`, status: 502, code: `upstream-${name}-rejected`, detail: upstreamProblem.detail })
+            ? new AppError({
+                title: `${name} rejected the request`,
+                status: 502,
+                code: `upstream-${name}-rejected`,
+                detail: upstreamProblem.detail,
+              })
             : new AppError(upstreamProblem);
         error.upstreamStatus = response.status;
         lastError = error;
@@ -137,9 +142,7 @@ function parseJson(text) {
 /** Keeps problem members such as `reason` and `paymentId` on the way through. */
 const RESERVED_PROBLEM_MEMBERS = new Set(['type', 'title', 'status', 'code', 'detail', 'traceId']);
 function pickExtras(payload) {
-  return Object.fromEntries(
-    Object.entries(payload).filter(([key]) => !RESERVED_PROBLEM_MEMBERS.has(key)),
-  );
+  return Object.fromEntries(Object.entries(payload).filter(([key]) => !RESERVED_PROBLEM_MEMBERS.has(key)));
 }
 
 function backoff(attempt) {

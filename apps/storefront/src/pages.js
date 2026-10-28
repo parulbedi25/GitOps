@@ -5,7 +5,18 @@
  * document shell. Pages receive plain data from the route layer, never a client,
  * which keeps them trivially unit-testable.
  */
-import { alert, emptyState, esc, formatDate, layout, money, productCard, quantityStepper, ratingStars, stockNote } from './ui.js';
+import {
+  alert,
+  emptyState,
+  esc,
+  formatDate,
+  layout,
+  money,
+  productCard,
+  quantityStepper,
+  ratingStars,
+  stockNote,
+} from './ui.js';
 
 const CATEGORY_LABELS = {
   audio: 'Audio',
@@ -52,9 +63,7 @@ function heroSection(featured) {
     </div>
   </section>
   <div class="page"><div class="chip-row" aria-label="Shop by category">
-    ${categoryChips
-      .map((slug) => `<a class="pill" href="/category/${slug}">${esc(categoryLabel(slug))}</a>`)
-      .join('')}
+    ${categoryChips.map((slug) => `<a class="pill" href="/category/${slug}">${esc(categoryLabel(slug))}</a>`).join('')}
   </div></div>`;
 }
 
@@ -73,7 +82,10 @@ export function renderHome({ products, featured = [], version, environment, cart
       <a class="link-more" href="/category/audio">Browse all products →</a>
     </div>
     <div class="grid">
-      ${products.slice(0, 8).map((product) => productCard(product, { categoryLabel: categoryLabel(product.category) })).join('')}
+      ${products
+        .slice(0, 8)
+        .map((product) => productCard(product, { categoryLabel: categoryLabel(product.category) }))
+        .join('')}
     </div>
   </section>
   <section class="section page">
@@ -113,7 +125,20 @@ export function renderHome({ products, featured = [], version, environment, cart
 }
 
 /** Category / search listing. */
-export function renderCatalog({ heading, subheading, products, categories, activeCategory, query, offset, limit, total, version, environment, cartCount }) {
+export function renderCatalog({
+  heading,
+  subheading,
+  products,
+  categories,
+  activeCategory,
+  query,
+  offset,
+  limit,
+  total,
+  version,
+  environment,
+  cartCount,
+}) {
   const nextOffset = offset + products.length < total ? offset + products.length : null;
   const prevOffset = Math.max(0, offset - limit);
   const body = `
@@ -156,7 +181,15 @@ export function renderCatalog({ heading, subheading, products, categories, activ
     </nav>
   </div>`;
 
-  return layout({ title: heading, description: subheading, body, cartCount, activeNav: activeCategory ? `/category/${activeCategory}` : '/', version, environment });
+  return layout({
+    title: heading,
+    description: subheading,
+    body,
+    cartCount,
+    activeNav: activeCategory ? `/category/${activeCategory}` : '/',
+    version,
+    environment,
+  });
 }
 
 export function renderProduct({ product, related, version, environment, cartCount }) {
@@ -279,7 +312,14 @@ export function renderCart({ cart, totals, version, environment, notice }) {
     </div>
   </div>`;
 
-  return layout({ title: 'Your bag', description: 'Review your ShopStack bag.', body, cartCount, version, environment });
+  return layout({
+    title: 'Your bag',
+    description: 'Review your ShopStack bag.',
+    body,
+    cartCount,
+    version,
+    environment,
+  });
 }
 
 export function renderCheckout({ cart, totals, idempotencyKey, customer = {}, error, version, environment }) {
@@ -379,7 +419,14 @@ export function renderCheckout({ cart, totals, idempotencyKey, customer = {}, er
     </form>
   </div>`;
 
-  return layout({ title: 'Checkout', description: 'Complete your ShopStack order.', body, cartCount: totals.itemCount, version, environment });
+  return layout({
+    title: 'Checkout',
+    description: 'Complete your ShopStack order.',
+    body,
+    cartCount: totals.itemCount,
+    version,
+    environment,
+  });
 }
 
 export function renderOrder({ order, version, environment }) {
@@ -468,10 +515,25 @@ export function renderOrderLookup({ orderId, error, version, environment }) {
       <button class="btn btn-primary" type="submit">Find my order</button>
     </form>
   </div>`;
-  return layout({ title: 'Track an order', description: 'Look up a ShopStack order.', body, cartCount: 0, version, environment });
+  return layout({
+    title: 'Track an order',
+    description: 'Look up a ShopStack order.',
+    body,
+    cartCount: 0,
+    version,
+    environment,
+  });
 }
 
-export function renderError({ status = 500, title = 'Something went wrong', message, traceId, version, environment, cartCount = 0 }) {
+export function renderError({
+  status = 500,
+  title = 'Something went wrong',
+  message,
+  traceId,
+  version,
+  environment,
+  cartCount = 0,
+}) {
   const body = `
   <div class="page">
     ${emptyState({

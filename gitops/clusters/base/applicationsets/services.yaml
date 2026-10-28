@@ -34,11 +34,11 @@ spec:
 
   template:
     metadata:
-      name: 'shopstack-{{.path.basename}}-{{index .path.segments 3}}'
+      name: "shopstack-{{.path.basename}}-{{index .path.segments 3}}"
       labels:
         app.kubernetes.io/part-of: shopstack
-        app.kubernetes.io/component: '{{.path.basename}}'
-        shopstack.io/environment: '{{index .path.segments 3}}'
+        app.kubernetes.io/component: "{{.path.basename}}"
+        shopstack.io/environment: "{{index .path.segments 3}}"
         shopstack.io/managed-by: gitops
       annotations:
         # Storefront lands after the APIs it calls; everything else shares wave 20.
@@ -48,11 +48,11 @@ spec:
       project: shopstack-apps
       destination:
         server: https://kubernetes.default.svc
-        namespace: 'shopstack-{{index .path.segments 3}}'
+        namespace: "shopstack-{{index .path.segments 3}}"
       source:
         repoURL: https://github.com/parulbedi25/GitOps.git
         targetRevision: main
-        path: '{{.path.path}}'
+        path: "{{.path.path}}"
         kustomize:
           # The app overlays inflate the shopstack-service Helm chart, so Argo CD
           # needs Helm available in the repo-server (bundled since v2.6).

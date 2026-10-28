@@ -60,9 +60,14 @@ export function createChaosController({ enabled = false, metrics, logger } = {})
      */
     async middleware(request) {
       if (!controller.active) return;
-      if (request.url.startsWith('/internal/chaos') || request.url.startsWith('/healthz') ||
-          request.url.startsWith('/readyz') || request.url.startsWith('/livez') ||
-          request.url.startsWith('/startupz') || request.url.startsWith('/metrics')) {
+      if (
+        request.url.startsWith('/internal/chaos') ||
+        request.url.startsWith('/healthz') ||
+        request.url.startsWith('/readyz') ||
+        request.url.startsWith('/livez') ||
+        request.url.startsWith('/startupz') ||
+        request.url.startsWith('/metrics')
+      ) {
         return;
       }
       if (state.latencyMs > 0) {

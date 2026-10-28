@@ -62,7 +62,10 @@ export class MemoryCartRepository {
 export class RedisCartRepository {
   static async create({ url, ttlSeconds, logger }) {
     const { createClient } = await import('redis');
-    const client = createClient({ url, socket: { connectTimeout: 3000, reconnectStrategy: (retries) => Math.min(retries * 100, 3000) } });
+    const client = createClient({
+      url,
+      socket: { connectTimeout: 3000, reconnectStrategy: (retries) => Math.min(retries * 100, 3000) },
+    });
     client.on('error', (err) => logger?.error({ err }, 'redis client error'));
     await client.connect();
     return new RedisCartRepository(client, ttlSeconds);

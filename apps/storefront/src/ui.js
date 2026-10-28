@@ -30,7 +30,11 @@ export function money(cents, currency = 'USD') {
 
 export function formatDate(iso) {
   if (!iso) return '';
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(new Date(iso)) + ' UTC';
+  return (
+    new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(
+      new Date(iso),
+    ) + ' UTC'
+  );
 }
 
 const star = `<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 1.6l2.6 5.3 5.9.8-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L1.5 7.7l5.9-.8z"/></svg>`;
@@ -57,7 +61,15 @@ const NAV = [
  * Wraps page content in the document shell.
  * @param {{title: string, description: string, body: string, cartCount?: number, activeNav?: string, version?: string, environment?: string}} opts
  */
-export function layout({ title, description, body, cartCount = 0, activeNav = '', version = 'dev', environment = 'local' }) {
+export function layout({
+  title,
+  description,
+  body,
+  cartCount = 0,
+  activeNav = '',
+  version = 'dev',
+  environment = 'local',
+}) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -87,8 +99,7 @@ export function layout({ title, description, body, cartCount = 0, activeNav = ''
       </a>
       <nav class="nav" aria-label="Primary">
         ${NAV.map(
-          (item) =>
-            `<a href="${item.href}"${activeNav === item.href ? ' aria-current="page"' : ''}>${item.label}</a>`,
+          (item) => `<a href="${item.href}"${activeNav === item.href ? ' aria-current="page"' : ''}>${item.label}</a>`,
         ).join('')}
       </nav>
       <div class="header-actions">

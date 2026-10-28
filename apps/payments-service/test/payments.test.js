@@ -65,7 +65,10 @@ describe('POST /api/payments', () => {
     assert.equal(payment.amountCents, 27900);
     assert.equal(payment.provider.brand, 'visa');
     assert.equal(payment.provider.last4, '4242');
-    assert.deepEqual(payment.timeline.map((t) => t.status), ['requires_confirmation', 'authorized']);
+    assert.deepEqual(
+      payment.timeline.map((t) => t.status),
+      ['requires_confirmation', 'authorized'],
+    );
   });
 
   test('never persists or echoes the raw payment token', async () => {
@@ -87,7 +90,10 @@ describe('POST /api/payments', () => {
   });
 
   test('declines known test tokens with 402 and a reason', async () => {
-    const res = await createPayment(ctx, paymentPayload({ orderId: 'order-declined', paymentMethod: { type: 'card', token: 'tok_declined' } }));
+    const res = await createPayment(
+      ctx,
+      paymentPayload({ orderId: 'order-declined', paymentMethod: { type: 'card', token: 'tok_declined' } }),
+    );
     assert.equal(res.statusCode, 402);
     const problem = res.json();
     assert.equal(problem.code, 'payment-declined');
@@ -132,7 +138,10 @@ describe('capture, void and refund', () => {
   });
 
   test('refuses to capture a declined payment', async () => {
-    const declined = await createPayment(ctx, paymentPayload({ orderId: 'order-decl', paymentMethod: { type: 'card', token: 'tok_declined' } }));
+    const declined = await createPayment(
+      ctx,
+      paymentPayload({ orderId: 'order-decl', paymentMethod: { type: 'card', token: 'tok_declined' } }),
+    );
     const res = await ctx.app.inject({ method: 'POST', url: `/api/payments/${declined.json().paymentId}/capture` });
     assert.equal(res.statusCode, 409);
     assert.equal(res.json().code, 'payment-not-capturable');
@@ -286,13 +295,21 @@ describe('operational endpoints', () => {
   });
 
   test('allows tuning the processor failure rate outside prod', async () => {
-    const res = await ctx.app.inject({ method: 'POST', url: '/internal/processor/failure-rate', payload: { failureRate: 0.5 } });
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/internal/processor/failure-rate',
+      payload: { failureRate: 0.5 },
+    });
     assert.equal(res.statusCode, 200);
     assert.equal(res.json().failureRate, 0.5);
     await ctx.app.inject({ method: 'POST', url: '/internal/processor/failure-rate', payload: { failureRate: 0 } });
 
     const prodCtx = await buildApp({ DEPLOYMENT_ENVIRONMENT: 'prod' });
-    const forbidden = await prodCtx.app.inject({ method: 'POST', url: '/internal/processor/failure-rate', payload: { failureRate: 1 } });
+    const forbidden = await prodCtx.app.inject({
+      method: 'POST',
+      url: '/internal/processor/failure-rate',
+      payload: { failureRate: 1 },
+    });
     assert.equal(forbidden.statusCode, 403);
     await prodCtx.app.close();
   });

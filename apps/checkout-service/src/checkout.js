@@ -28,7 +28,16 @@ import { AppError, conflict, notFound, unprocessable } from '@shopstack/telemetr
 export const ORDER_STATUS = { CONFIRMED: 'confirmed', CANCELLED: 'cancelled', FAILED: 'failed' };
 
 export class CheckoutService {
-  constructor({ repository, cartClient, catalogClient, paymentsClient, metrics, logger, clock = () => new Date(), idFactory = () => `ord_${randomUUID()}` }) {
+  constructor({
+    repository,
+    cartClient,
+    catalogClient,
+    paymentsClient,
+    metrics,
+    logger,
+    clock = () => new Date(),
+    idFactory = () => `ord_${randomUUID()}`,
+  }) {
     this.repository = repository;
     this.cart = cartClient;
     this.catalog = catalogClient;
@@ -52,8 +61,14 @@ export class CheckoutService {
       ['step', 'outcome'],
       [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
     );
-    this.compensations = metrics.counter('shopstack_saga_compensations_total', 'Compensations executed by step.', ['step', 'result']);
-    this.inflightGauge = metrics.gauge('shopstack_checkout_inflight', 'Checkout sagas currently in flight (saturation signal).');
+    this.compensations = metrics.counter('shopstack_saga_compensations_total', 'Compensations executed by step.', [
+      'step',
+      'result',
+    ]);
+    this.inflightGauge = metrics.gauge(
+      'shopstack_checkout_inflight',
+      'Checkout sagas currently in flight (saturation signal).',
+    );
     this.orderValue = metrics.histogram(
       'shopstack_order_value_cents',
       'Order value of confirmed orders.',
@@ -99,8 +114,8 @@ export class CheckoutService {
     // UNIQUE constraint catches the multi-pod case.
     if (this.inFlight.has(idempotencyKey)) return this.inFlight.get(idempotencyKey);
 
-    const promise = this.#run({ idempotencyKey, cartId, customer, shippingAddress, paymentMethod, traceId }).finally(() =>
-      this.inFlight.delete(idempotencyKey),
+    const promise = this.#run({ idempotencyKey, cartId, customer, shippingAddress, paymentMethod, traceId }).finally(
+      () => this.inFlight.delete(idempotencyKey),
     );
     this.inFlight.set(idempotencyKey, promise);
     return promise;
@@ -141,12 +156,18 @@ export class CheckoutService {
 
     try {
       // 1 ── read the authoritative cart snapshot
-      const snapshot = await this.#step(order, 'load_cart', () => this.cart.get(`/internal/carts/${encodeURIComponent(input.cartId)}`));
+      const snapshot = await this.#step(order, 'load_cart', () =>
+        this.cart.get(`/internal/carts/${encodeURIComponent(input.cartId)}`),
+      );
       if (!snapshot?.cart?.items?.length) {
         throw unprocessable('Cart is empty', 'add at least one item before checking out', 'cart-empty');
       }
       if (snapshot.cart.status === 'locked') {
-        throw conflict('Cart is being checked out', 'another checkout is already in progress for this cart', 'cart-locked');
+        throw conflict(
+          'Cart is being checked out',
+          'another checkout is already in progress for this cart',
+          'cart-locked',
+        );
       }
 
       order.items = snapshot.cart.items.map((item) => ({
@@ -163,8 +184,13 @@ export class CheckoutService {
       const amountCents = snapshot.totals.totalCents;
 
       // 2 ── lock the cart so it cannot change while we charge
-      await this.#step(order, 'lock_cart', () => this.cart.post(`/internal/carts/${encodeURIComponent(input.cartId)}/lock`));
-      compensations.push({ step: 'lock_cart', run: () => this.cart.post(`/internal/carts/${encodeURIComponent(input.cartId)}/unlock`) });
+      await this.#step(order, 'lock_cart', () =>
+        this.cart.post(`/internal/carts/${encodeURIComponent(input.cartId)}/lock`),
+      );
+      compensations.push({
+        step: 'lock_cart',
+        run: () => this.cart.post(`/internal/carts/${encodeURIComponent(input.cartId)}/unlock`),
+      });
 
       // 3 ── reserve inventory
       const reservation = await this.#step(order, 'reserve_stock', () =>
@@ -174,7 +200,10 @@ export class CheckoutService {
         }),
       );
       order.reservationId = reservation.id;
-      compensations.push({ step: 'reserve_stock', run: () => this.catalog.post(`/internal/stock/reservations/${reservation.id}/release`) });
+      compensations.push({
+        step: 'reserve_stock',
+        run: () => this.catalog.post(`/internal/stock/reservations/${reservation.id}/release`),
+      });
 
       // 4 ── authorise the card (idempotent on the order id)
       const payment = await this.#step(order, 'authorize_payment', () =>
@@ -212,12 +241,20 @@ export class CheckoutService {
         this.payments.post(`/api/payments/${payment.id}/capture`),
       );
       order.payment.status = captured.status;
-      compensations.push({ step: 'capture_payment', run: () => this.payments.post(`/api/payments/${payment.id}/refund`) });
+      compensations.push({
+        step: 'capture_payment',
+        run: () => this.payments.post(`/api/payments/${payment.id}/refund`),
+      });
 
       // 6 ── commit the reservation, persist and release the cart
-      await this.#step(order, 'commit_stock', () => this.catalog.post(`/internal/stock/reservations/${reservation.id}/commit`), {
-        critical: false,
-      });
+      await this.#step(
+        order,
+        'commit_stock',
+        () => this.catalog.post(`/internal/stock/reservations/${reservation.id}/commit`),
+        {
+          critical: false,
+        },
+      );
 
       order.status = ORDER_STATUS.CONFIRMED;
       order.updatedAt = this.clock().toISOString();
@@ -278,13 +315,24 @@ export class CheckoutService {
         await compensation.run();
         completed.push(compensation.step);
         this.compensations.labels(compensation.step, 'success').inc();
-        order.timeline.push({ step: `compensate_${compensation.step}`, status: 'succeeded', at: this.clock().toISOString() });
+        order.timeline.push({
+          step: `compensate_${compensation.step}`,
+          status: 'succeeded',
+          at: this.clock().toISOString(),
+        });
       } catch (err) {
         this.compensations.labels(compensation.step, 'failure').inc();
         // A failed compensation means money or stock is stuck: this is exactly
         // the alert that pages the on-call engineer (see ShopStackSagaCompensationFailing).
-        this.logger.error({ err, step: compensation.step, sagaId }, 'compensation failed — manual reconciliation required');
-        order.timeline.push({ step: `compensate_${compensation.step}`, status: 'failed', at: this.clock().toISOString() });
+        this.logger.error(
+          { err, step: compensation.step, sagaId },
+          'compensation failed — manual reconciliation required',
+        );
+        order.timeline.push({
+          step: `compensate_${compensation.step}`,
+          status: 'failed',
+          at: this.clock().toISOString(),
+        });
       }
     }
     return completed;
@@ -314,11 +362,19 @@ export class CheckoutService {
 
     const steps = [];
     if (order.payment?.id) {
-      await this.#guarded('refund_payment', () => this.payments.post(`/api/payments/${order.payment.id}/refund`), steps);
+      await this.#guarded(
+        'refund_payment',
+        () => this.payments.post(`/api/payments/${order.payment.id}/refund`),
+        steps,
+      );
       order.payment.status = 'refunded';
     }
     if (order.reservationId) {
-      await this.#guarded('release_stock', () => this.catalog.post(`/internal/stock/reservations/${order.reservationId}/release`), steps);
+      await this.#guarded(
+        'release_stock',
+        () => this.catalog.post(`/internal/stock/reservations/${order.reservationId}/release`),
+        steps,
+      );
     }
 
     order.status = ORDER_STATUS.CANCELLED;

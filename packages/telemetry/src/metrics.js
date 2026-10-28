@@ -57,10 +57,7 @@ export function createMetrics({ service, version, environment, commit = 'unknown
     labelNames: ['version', 'commit', 'node_version', 'environment'],
     registers: [registry],
   });
-  buildInfo.set(
-    { version, commit, node_version: process.versions.node, environment },
-    1,
-  );
+  buildInfo.set({ version, commit, node_version: process.versions.node, environment }, 1);
 
   const dependencyUp = new client.Gauge({
     name: `${PREFIX}dependency_up`,

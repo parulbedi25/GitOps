@@ -1,0 +1,98 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Argo CD itself — the only Helm release in this repository that is installed
+# imperatively (once per cluster, by gitops/bootstrap/bootstrap.sh).
+#
+# Everything else, including the platforms Argo CD then reconciles, is declared
+# in Git. Upgrade Argo CD the same way you upgrade anything else: bump the chart
+# version in bootstrap.sh, re-run the script, read the release notes.
+#
+# Chart: https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd
+# ─────────────────────────────────────────────────────────────────────────────
+
+global:
+  domain: argocd.shopstack.example.com
+
+configs:
+  # Server parameters (argocd-cmd-params-cm).
+  params:
+    # TLS terminates at ingress-nginx with a cert-manager certificate, so the
+    # API server speaks plain HTTP inside the cluster. The redirect is enforced
+    # by the ingress annotation below, not by two layers of TLS.
+    server.insecure: true
+    # Argo CD renders Helm charts (the app overlays inflate one) — give the repo
+    # server room per request.
+    reposerver.parallelism.limit: "4"
+
+  # Argo CD configuration (argocd-cm).
+  cm:
+    # Annotations track ownership, so a resource renamed in Git is replaced
+    # rather than adopted by whatever object happens to have that name.
+    application.resourceTrackingMethod: annotation
+    # Reconcile faster than the 3 min default: the whole point of this repo is
+    # that Git converges quickly.
+    timeout.reconciliation: 120s
+    # Keep the UI honest about what is actually running.
+    resource.compareoptions: |
+      ignoreAggregatedRoles: true
+    url: https://argocd.shopstack.example.com
+
+  # Read-only by default: authentication is delegated to the cluster's OIDC
+  # provider in a real deployment, and `admin` stays as the break-glass account.
+  rbac:
+    policy.default: role:readonly
+    policy.csv: |
+      g, shopstack-platform-admins, role:admin
+    scopes: "[groups, email]"
+
+server:
+  replicas: 2
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: argocd.shopstack.example.com
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: HTTP
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls: true
+  # The ServiceMonitor for Argo CD lives in gitops/platform/observability/
+  # servicemonitors.yaml: the prometheus-operator CRDs do not exist yet when this
+  # chart is installed, so enabling it here would fail on a fresh cluster.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+controller:
+  replicas: 1
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+  # One sync at a time per cluster keeps rollout traffic predictable.
+  env:
+    - name: ARGOCD_CONTROLLER_REPLICAS
+      value: "1"
+
+repoServer:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+applicationSet:
+  replicas: 2
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
+
+notifications:
+  enabled: true
+  metrics:
+    enabled: true

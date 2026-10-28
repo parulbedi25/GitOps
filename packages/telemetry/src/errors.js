@@ -74,8 +74,7 @@ export const notFound = (what, identifier) =>
     detail: identifier ? `${what} ${identifier} does not exist.` : `${what} does not exist.`,
   });
 
-export const conflict = (title, detail, code = 'conflict') =>
-  new AppError({ title, status: 409, code, detail });
+export const conflict = (title, detail, code = 'conflict') => new AppError({ title, status: 409, code, detail });
 
 export const unprocessable = (title, detail, code = 'unprocessable-entity') =>
   new AppError({ title, status: 422, code, detail });

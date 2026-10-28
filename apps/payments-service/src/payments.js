@@ -21,7 +21,15 @@
 import { randomUUID } from 'node:crypto';
 import { AppError, conflict, notFound, unprocessable } from '@shopstack/telemetry';
 
-export const PAYMENT_STATES = ['requires_confirmation', 'authorized', 'captured', 'declined', 'refunded', 'partially_refunded', 'voided'];
+export const PAYMENT_STATES = [
+  'requires_confirmation',
+  'authorized',
+  'captured',
+  'declined',
+  'refunded',
+  'partially_refunded',
+  'voided',
+];
 
 export class SimulatedProcessor {
   /**
@@ -95,7 +103,10 @@ export function transition(payment, status, patch = {}) {
     ...patch,
     status,
     updatedAt: now,
-    timeline: [...payment.timeline, { status, at: now, ...(patch.failureReason ? { reason: patch.failureReason } : {}) }],
+    timeline: [
+      ...payment.timeline,
+      { status, at: now, ...(patch.failureReason ? { reason: patch.failureReason } : {}) },
+    ],
   };
 }
 
@@ -106,7 +117,11 @@ export function assertRefundable(payment, amountCents) {
   }
   const remaining = payment.amountCents - payment.refundedCents;
   if (amountCents > remaining) {
-    throw unprocessable('Refund exceeds captured amount', `only ${remaining} cents remain refundable`, 'refund-exceeds-captured');
+    throw unprocessable(
+      'Refund exceeds captured amount',
+      `only ${remaining} cents remain refundable`,
+      'refund-exceeds-captured',
+    );
   }
 }
 

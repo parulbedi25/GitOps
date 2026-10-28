@@ -7,12 +7,7 @@
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AppError, conflict, notFound, unprocessable } from '@shopstack/telemetry';
-import {
-  assertCapturable,
-  assertRefundable,
-  newPayment,
-  transition,
-} from './payments.js';
+import { assertCapturable, assertRefundable, newPayment, transition } from './payments.js';
 
 const paymentSchema = {
   type: 'object',
@@ -37,7 +32,10 @@ const MAX_AMOUNT_CENTS = 5_000_000;
 const WEBHOOK_TOLERANCE_SECONDS = 300;
 
 export async function registerRoutes({ app, repository, metrics, config, processor }) {
-  const paymentsTotal = metrics.counter('shopstack_payments_total', 'Payment intents by terminal state.', ['status', 'reason']);
+  const paymentsTotal = metrics.counter('shopstack_payments_total', 'Payment intents by terminal state.', [
+    'status',
+    'reason',
+  ]);
   const amountHistogram = metrics.histogram(
     'shopstack_payment_amount_cents',
     'Authorised payment amounts in cents.',
@@ -50,8 +48,14 @@ export async function registerRoutes({ app, repository, metrics, config, process
     ['outcome'],
     [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
   );
-  const idempotentReplays = metrics.counter('shopstack_payment_idempotent_replays_total', 'Create calls served from the idempotency store.');
-  const webhookEvents = metrics.counter('shopstack_payment_webhook_events_total', 'PSP webhook deliveries.', ['type', 'result']);
+  const idempotentReplays = metrics.counter(
+    'shopstack_payment_idempotent_replays_total',
+    'Create calls served from the idempotency store.',
+  );
+  const webhookEvents = metrics.counter('shopstack_payment_webhook_events_total', 'PSP webhook deliveries.', [
+    'type',
+    'result',
+  ]);
   const declinedTotal = metrics.counter('shopstack_payment_declines_total', 'Declined payments by reason.', ['reason']);
 
   async function findOr404(id) {
@@ -62,7 +66,12 @@ export async function registerRoutes({ app, repository, metrics, config, process
 
   function verifyWebhookSignature(request) {
     if (!config.PSP_WEBHOOK_SECRET) {
-      throw new AppError({ title: 'Webhooks disabled', status: 503, code: 'webhooks-disabled', detail: 'PSP_WEBHOOK_SECRET is not configured' });
+      throw new AppError({
+        title: 'Webhooks disabled',
+        status: 503,
+        code: 'webhooks-disabled',
+        detail: 'PSP_WEBHOOK_SECRET is not configured',
+      });
     }
     const signature = request.headers['x-psp-signature'];
     const timestamp = request.headers['x-psp-timestamp'];
@@ -71,13 +80,19 @@ export async function registerRoutes({ app, repository, metrics, config, process
     }
     const age = Math.abs(Date.now() / 1000 - Number(timestamp));
     if (!Number.isFinite(age) || age > WEBHOOK_TOLERANCE_SECONDS) {
-      throw new AppError({ title: 'Stale webhook', status: 401, code: 'webhook-timestamp-invalid', detail: 'replay window exceeded' });
+      throw new AppError({
+        title: 'Stale webhook',
+        status: 401,
+        code: 'webhook-timestamp-invalid',
+        detail: 'replay window exceeded',
+      });
     }
     const payload = `${timestamp}.${request.rawBody?.toString('utf8') ?? JSON.stringify(request.body)}`;
     const expected = createHmac('sha256', config.PSP_WEBHOOK_SECRET).update(payload).digest('hex');
     const provided = String(signature).replace(/^sha256=/, '');
     const isValid =
-      provided.length === expected.length && timingSafeEqual(Buffer.from(provided, 'utf8'), Buffer.from(expected, 'utf8'));
+      provided.length === expected.length &&
+      timingSafeEqual(Buffer.from(provided, 'utf8'), Buffer.from(expected, 'utf8'));
     if (!isValid) {
       throw new AppError({ title: 'Invalid signature', status: 401, code: 'webhook-signature-invalid' });
     }
@@ -158,19 +173,16 @@ export async function registerRoutes({ app, repository, metrics, config, process
         paymentsTotal.labels('declined', result.reason).inc();
         declinedTotal.labels(result.reason).inc();
         request.log.info({ paymentId: declined.id, reason: result.reason }, 'payment declined');
-        return reply
-          .code(402)
-          .type('application/problem+json')
-          .send({
-            type: 'https://errors.shopstack.dev/payment-declined',
-            title: 'Payment declined',
-            status: 402,
-            code: 'payment-declined',
-            detail: result.reason,
-            reason: result.reason,
-            paymentId: declined.id,
-            traceId: request.id,
-          });
+        return reply.code(402).type('application/problem+json').send({
+          type: 'https://errors.shopstack.dev/payment-declined',
+          title: 'Payment declined',
+          status: 402,
+          code: 'payment-declined',
+          detail: result.reason,
+          reason: result.reason,
+          paymentId: declined.id,
+          traceId: request.id,
+        });
       }
 
       const authorized = transition(payment, 'authorized', {
@@ -184,7 +196,9 @@ export async function registerRoutes({ app, repository, metrics, config, process
     },
   );
 
-  app.get('/api/payments/:id', { schema: { response: { 200: paymentSchema } } }, async (request) => findOr404(request.params.id));
+  app.get('/api/payments/:id', { schema: { response: { 200: paymentSchema } } }, async (request) =>
+    findOr404(request.params.id),
+  );
 
   app.get(
     '/api/payments',
@@ -280,7 +294,9 @@ export async function registerRoutes({ app, repository, metrics, config, process
       updated = transition(payment, 'captured');
     } else if (type === 'payment.refunded') {
       const refundedCents = Math.min(payment.amountCents, data.refundedCents ?? payment.amountCents);
-      updated = transition(payment, refundedCents >= payment.amountCents ? 'refunded' : 'partially_refunded', { refundedCents });
+      updated = transition(payment, refundedCents >= payment.amountCents ? 'refunded' : 'partially_refunded', {
+        refundedCents,
+      });
     }
     await repository.save(updated);
     webhookEvents.labels(type, 'processed').inc();
@@ -292,10 +308,16 @@ export async function registerRoutes({ app, repository, metrics, config, process
   /** Deterministic processor configuration for demos (never enabled in prod). */
   app.post('/internal/processor/failure-rate', async (request) => {
     if (config.DEPLOYMENT_ENVIRONMENT === 'prod') {
-      throw new AppError({ title: 'Forbidden', status: 403, code: 'forbidden', detail: 'cannot change processor behaviour in prod' });
+      throw new AppError({
+        title: 'Forbidden',
+        status: 403,
+        code: 'forbidden',
+        detail: 'cannot change processor behaviour in prod',
+      });
     }
     const rate = Number(request.body?.failureRate ?? 0);
-    if (!Number.isFinite(rate) || rate < 0 || rate > 1) throw unprocessable('Invalid failure rate', 'must be between 0 and 1');
+    if (!Number.isFinite(rate) || rate < 0 || rate > 1)
+      throw unprocessable('Invalid failure rate', 'must be between 0 and 1');
     processor.failureRate = rate;
     request.log.warn({ failureRate: rate }, 'payment processor failure rate changed');
     return { failureRate: processor.failureRate };

@@ -62,7 +62,13 @@ describe('configuration', () => {
 
 describe('error model', () => {
   test('renders an RFC 9457 problem document', () => {
-    const error = new AppError({ title: 'Payment declined', status: 402, code: 'payment-declined', detail: 'insufficient_funds', reason: 'insufficient_funds' });
+    const error = new AppError({
+      title: 'Payment declined',
+      status: 402,
+      code: 'payment-declined',
+      detail: 'insufficient_funds',
+      reason: 'insufficient_funds',
+    });
     const problem = error.toProblem('trace-1');
     assert.deepEqual(problem, {
       type: 'https://errors.shopstack.dev/payment-declined',
@@ -76,14 +82,24 @@ describe('error model', () => {
   });
 
   test('moves a list of field errors into errors[]', () => {
-    const error = new AppError({ title: 'Insufficient stock', status: 409, code: 'out-of-stock', detail: [{ productId: 'sku-1', available: 0 }] });
+    const error = new AppError({
+      title: 'Insufficient stock',
+      status: 409,
+      code: 'out-of-stock',
+      detail: [{ productId: 'sku-1', available: 0 }],
+    });
     const problem = error.toProblem('trace-2');
     assert.equal(problem.detail, 'Insufficient stock');
     assert.equal(problem.errors[0].productId, 'sku-1');
   });
 
   test('never leaks the detail of a 5xx', () => {
-    const error = new AppError({ title: 'Database exploded', status: 500, code: 'internal-error', detail: 'connection string postgres://user:pw@host' });
+    const error = new AppError({
+      title: 'Database exploded',
+      status: 500,
+      code: 'internal-error',
+      detail: 'connection string postgres://user:pw@host',
+    });
     assert.equal(error.toProblem('trace-3').detail, undefined);
   });
 
@@ -127,12 +143,20 @@ describe('health registry', () => {
 
 describe('metrics', () => {
   test('namespaces domain metrics and labels every series with the service', async () => {
-    const metrics = createMetrics({ service: 'demo-service', version: '1.2.3', environment: 'test', commit: 'abc1234' });
+    const metrics = createMetrics({
+      service: 'demo-service',
+      version: '1.2.3',
+      environment: 'test',
+      commit: 'abc1234',
+    });
     metrics.counter('orders_total', 'Orders by status.', ['status']).labels('confirmed').inc();
     metrics.gauge('inflight', 'In flight.').set(3);
 
     const rendered = await metrics.render();
-    assert.match(rendered, /^shopstack_orders_total\{(?=[^}]*service="demo-service")(?=[^}]*status="confirmed")[^}]*\} 1$/m);
+    assert.match(
+      rendered,
+      /^shopstack_orders_total\{(?=[^}]*service="demo-service")(?=[^}]*status="confirmed")[^}]*\} 1$/m,
+    );
     assert.match(rendered, /^shopstack_inflight\{(?=[^}]*service="demo-service")[^}]*\} 3$/m);
     assert.match(rendered, /shopstack_build_info\{[^}]*version="1.2.3"/);
     assert.match(rendered, /shopstack_nodejs_heap_size_used_bytes|shopstack_process_cpu_seconds_total/);
@@ -171,7 +195,14 @@ describe('http client', () => {
     await server.listen({ port: 0, host: '127.0.0.1' });
     baseUrl = `http://127.0.0.1:${server.server.address().port}`;
 
-    const client = createHttpClient({ name: 'catalog', baseUrl, metrics, logger: silentLogger(), timeoutMs: 500, retries: 1 });
+    const client = createHttpClient({
+      name: 'catalog',
+      baseUrl,
+      metrics,
+      logger: silentLogger(),
+      timeoutMs: 500,
+      retries: 1,
+    });
 
     const product = await client.get('/api/products/sku-1');
     assert.equal(product.name, 'Atlas');
@@ -182,7 +213,13 @@ describe('http client', () => {
       return true;
     });
 
-    const impatient = createHttpClient({ name: 'catalog-slow', baseUrl, metrics, logger: silentLogger(), timeoutMs: 50 });
+    const impatient = createHttpClient({
+      name: 'catalog-slow',
+      baseUrl,
+      metrics,
+      logger: silentLogger(),
+      timeoutMs: 50,
+    });
     await assert.rejects(impatient.get('/slow'), (error) => {
       assert.equal(error.status, 504);
       assert.equal(error.code, 'upstream-catalog-slow-timeout');

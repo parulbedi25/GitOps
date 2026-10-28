@@ -63,14 +63,17 @@ const publicProduct = (p) => ({
 });
 
 export async function registerRoutes({ app, repository, metrics, cache, config }) {
-  const reservations = metrics.counter(
-    'shopstack_catalog_reservations_total',
-    'Stock reservations by outcome.',
-    ['outcome'],
-  );
+  const reservations = metrics.counter('shopstack_catalog_reservations_total', 'Stock reservations by outcome.', [
+    'outcome',
+  ]);
   const stockGauge = metrics.gauge('shopstack_catalog_stock_units', 'Units on hand per product.', ['product']);
-  const outOfStockGauge = metrics.gauge('shopstack_catalog_out_of_stock_products', 'Number of products with zero stock.');
-  const cacheCounter = metrics.counter('shopstack_catalog_cache_events_total', 'Product cache hits and misses.', ['result']);
+  const outOfStockGauge = metrics.gauge(
+    'shopstack_catalog_out_of_stock_products',
+    'Number of products with zero stock.',
+  );
+  const cacheCounter = metrics.counter('shopstack_catalog_cache_events_total', 'Product cache hits and misses.', [
+    'result',
+  ]);
 
   /** Refresh low-cardinality inventory gauges in the background (never on the request path). */
   const refreshGauges = async () => {
@@ -118,7 +121,11 @@ export async function registerRoutes({ app, repository, metrics, cache, config }
             q: { type: 'string', maxLength: 120 },
             limit: { type: 'integer', minimum: 1, maximum: 48, default: 12 },
             offset: { type: 'integer', minimum: 0, maximum: 1000, default: 0 },
-            sort: { type: 'string', enum: ['relevance', 'price_asc', 'price_desc', 'rating', 'newest'], default: 'relevance' },
+            sort: {
+              type: 'string',
+              enum: ['relevance', 'price_asc', 'price_desc', 'rating', 'newest'],
+              default: 'relevance',
+            },
             inStock: { type: 'boolean', default: false },
           },
         },
@@ -263,7 +270,8 @@ export async function registerRoutes({ app, repository, metrics, cache, config }
   });
 
   app.post('/internal/cache/flush', async () => {
-    if (config.DEPLOYMENT_ENVIRONMENT === 'prod') throw badRequest('cache flush disabled in production', 'cache-flush-disabled');
+    if (config.DEPLOYMENT_ENVIRONMENT === 'prod')
+      throw badRequest('cache flush disabled in production', 'cache-flush-disabled');
     cache.clear();
     return { flushed: true };
   });

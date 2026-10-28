@@ -32,7 +32,8 @@ export function itemIdFor(productId) {
  * having fetched the authoritative product snapshot (price, name, stock).
  */
 export function addItem(cart, product, quantity, now = new Date()) {
-  if (cart.status !== 'open') throw conflict('Cart is locked', 'a checkout is already in progress for this cart', 'cart-locked');
+  if (cart.status !== 'open')
+    throw conflict('Cart is locked', 'a checkout is already in progress for this cart', 'cart-locked');
   if (quantity > MAX_QUANTITY_PER_LINE) {
     throw unprocessable('Quantity limit exceeded', `at most ${MAX_QUANTITY_PER_LINE} units per line`, 'quantity-limit');
   }
@@ -45,7 +46,11 @@ export function addItem(cart, product, quantity, now = new Date()) {
     throw unprocessable('Quantity limit exceeded', `at most ${MAX_QUANTITY_PER_LINE} units per line`, 'quantity-limit');
   }
   if (product.stock < nextQuantity) {
-    throw conflict('Not enough stock', `only ${product.stock} units of ${product.name} are available`, 'insufficient-stock');
+    throw conflict(
+      'Not enough stock',
+      `only ${product.stock} units of ${product.name} are available`,
+      'insufficient-stock',
+    );
   }
   if (!existing && cart.items.length >= MAX_LINES) {
     throw unprocessable('Cart is full', `at most ${MAX_LINES} distinct items per cart`, 'cart-full');
@@ -54,7 +59,13 @@ export function addItem(cart, product, quantity, now = new Date()) {
   const items = existing
     ? cart.items.map((item) =>
         item.id === itemId
-          ? { ...item, quantity: nextQuantity, unitPriceCents: product.priceCents, name: product.name, image: product.image }
+          ? {
+              ...item,
+              quantity: nextQuantity,
+              unitPriceCents: product.priceCents,
+              name: product.name,
+              image: product.image,
+            }
           : item,
       )
     : [
@@ -75,15 +86,17 @@ export function addItem(cart, product, quantity, now = new Date()) {
 }
 
 export function setQuantity(cart, itemId, quantity, now = new Date()) {
-  if (cart.status !== 'open') throw conflict('Cart is locked', 'a checkout is already in progress for this cart', 'cart-locked');
+  if (cart.status !== 'open')
+    throw conflict('Cart is locked', 'a checkout is already in progress for this cart', 'cart-locked');
   const item = cart.items.find((line) => line.id === itemId);
   if (!item) throw notFound('Cart item', itemId);
   if (quantity > MAX_QUANTITY_PER_LINE) {
     throw unprocessable('Quantity limit exceeded', `at most ${MAX_QUANTITY_PER_LINE} units per line`, 'quantity-limit');
   }
-  const items = quantity <= 0
-    ? cart.items.filter((line) => line.id !== itemId)
-    : cart.items.map((line) => (line.id === itemId ? { ...line, quantity } : line));
+  const items =
+    quantity <= 0
+      ? cart.items.filter((line) => line.id !== itemId)
+      : cart.items.map((line) => (line.id === itemId ? { ...line, quantity } : line));
   return touch(cart, { items }, now);
 }
 
@@ -114,7 +127,8 @@ export function mergeCarts(target, source, now = new Date()) {
 }
 
 export function lock(cart, now = new Date()) {
-  if (cart.items.length === 0) throw unprocessable('Cart is empty', 'add at least one item before checking out', 'cart-empty');
+  if (cart.items.length === 0)
+    throw unprocessable('Cart is empty', 'add at least one item before checking out', 'cart-empty');
   if (cart.status === 'locked') return cart;
   return touch(cart, { status: 'locked' }, now);
 }

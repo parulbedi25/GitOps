@@ -1,0 +1,196 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Promotion — move a release from dev to QA and from QA to prod.
+#
+#   Actions → promote → Run workflow
+#     service:     cart-service | … | all
+#     tag:         1.0.0-a1b2c3d   (the tag the release workflow produced)
+#     digest:      sha256:…        (optional; preferred for prod)
+#     environment: qa | prod
+#
+# A promotion is a pull request that changes image pins. Nothing is deployed by
+# this workflow: it opens the diff, a human reviews it, and Argo CD applies it on
+# merge. `environment:` binds the run to a GitHub Environment, so prod requires
+# the approvals configured on that environment before the PR is even opened.
+#
+# The signature check below runs cosign against the exact identity pinned by the
+# Kyverno policy, so an image that production would reject cannot be promoted.
+# ─────────────────────────────────────────────────────────────────────────────
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Service to promote
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - cart-service
+          - catalog-service
+          - payments-service
+          - checkout-service
+          - storefront
+      tag:
+        description: Image tag produced by the release workflow (e.g. 1.0.0-a1b2c3d)
+        required: false
+        type: string
+      digest:
+        description: Alternatively pin an immutable digest (sha256:…), preferred for prod
+        required: false
+        type: string
+      environment:
+        description: Target environment
+        required: true
+        default: qa
+        type: choice
+        options:
+          - qa
+          - prod
+
+concurrency:
+  group: promote-${{ inputs.environment }}-${{ inputs.service }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: shopstack
+
+jobs:
+  promote:
+    name: promote → ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: azure/setup-kubectl@v4.0.1
+        with:
+          version: v1.30.5
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.16.3
+
+      - uses: sigstore/cosign-installer@v3.9.2
+
+      - name: Require exactly one of tag / digest
+        env:
+          TAG: ${{ inputs.tag }}
+          DIGEST: ${{ inputs.digest }}
+        run: |
+          if [ -z "$TAG" ] && [ -z "$DIGEST" ]; then
+            echo "::error::provide a tag or a digest"
+            exit 1
+          fi
+          if [ -n "$TAG" ] && [ -n "$DIGEST" ]; then
+            echo "::error::provide either a tag or a digest, not both"
+            exit 1
+          fi
+
+      # Production only accepts images signed by this repository's release
+      # workflow. Proving it here turns a rejected rollout into a failed upgrade.
+      - name: Verify provenance before promoting
+        if: inputs.environment == 'prod'
+        env:
+          DIGEST: ${{ inputs.digest }}
+          TAG: ${{ inputs.tag }}
+          SERVICE: ${{ inputs.service }}
+        run: |
+          set -euo pipefail
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          services=()
+          if [ "$SERVICE" = "all" ]; then
+            services=(cart-service catalog-service payments-service checkout-service storefront)
+          else
+            services=("$SERVICE")
+          fi
+
+          if [ -z "$DIGEST" ]; then
+            echo "::error::prod promotions must pin a digest — resolve it with"
+            echo "  cosign triangulate ${REGISTRY}/${owner}/${IMAGE_NAMESPACE}/<service>:${TAG}"
+            exit 1
+          fi
+
+          for service in "${services[@]}"; do
+            image="${REGISTRY}/${owner}/${IMAGE_NAMESPACE}/${service}@${DIGEST}"
+            echo "▸ $image"
+            cosign verify "$image" \
+              --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yaml@refs/heads/main" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --rekor-url "https://rekor.sigstore.dev"
+          done
+
+      - name: Rewrite the image pins
+        env:
+          SERVICE: ${{ inputs.service }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          TAG: ${{ inputs.tag }}
+          DIGEST: ${{ inputs.digest }}
+        run: |
+          if [ -n "$DIGEST" ]; then
+            scripts/promote.sh --service "$SERVICE" --digest "$DIGEST" --env "$ENVIRONMENT" --yes --verify
+          else
+            scripts/promote.sh --service "$SERVICE" --tag "$TAG" --env "$ENVIRONMENT" --yes --verify
+          fi
+
+      - name: Open the promotion pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERVICE: ${{ inputs.service }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          TAG: ${{ inputs.tag }}
+          DIGEST: ${{ inputs.digest }}
+        run: |
+          set -euo pipefail
+          ref="${TAG:-${DIGEST:7:7}}"
+          branch="promote/${ENVIRONMENT}-${SERVICE}-${ref}"
+
+          if git diff --quiet; then
+            echo "nothing to promote: ${SERVICE} already pins ${ref} in ${ENVIRONMENT}"
+            exit 0
+          fi
+
+          git config user.name "shopstack-release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "promote(${ENVIRONMENT}): ${SERVICE} ${ref}"
+          git push origin "$branch"
+
+          cat > /tmp/pr-body.md <<EOF
+          Automated promotion from the promote workflow.
+
+          | | |
+          | --- | --- |
+          | Environment | **$ENVIRONMENT** |
+          | Service | **$SERVICE** |
+          | Reference | **$ref** |
+          | Requested by | @$GITHUB_ACTOR |
+          | Signature | verified with cosign keyless (release workflow identity) |
+
+          **What merging this does:** it rewrites the image pin under
+          gitops/apps/overlays/$ENVIRONMENT/. Argo CD reconciles the change on its
+          next poll, and this environment's rollout strategy takes over from there —
+          canary steps with a Prometheus analysis in QA and prod, a plain rolling
+          update in dev.
+
+          **Rollback is a revert of this commit.**
+          EOF
+
+          # The workflow file indents its shell by ten spaces; the PR body must not.
+          sed -i 's/^          //' /tmp/pr-body.md
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "promote(${ENVIRONMENT}): ${SERVICE} ${ref}" \
+            --body-file /tmp/pr-body.md
