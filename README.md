@@ -35,6 +35,7 @@ next to it.
 7. [Environments at a glance](#7-environments-at-a-glance)
 8. [The five validation gates](#8-the-five-validation-gates)
 9. [What is deliberately not here](#9-what-is-deliberately-not-here)
+10. [Companion: TrailPin Android tracker](#10-companion-trailpin-android-tracker)
 
 ---
 
@@ -836,6 +837,30 @@ Honest scope beats an unfinished sprawl:
 - **No image promotion by digest yet.** The overlays and the script support it, and
   `require-image-digest` is waiting in audit mode; the day the CI pipeline emits digests,
   it is a two-line change per overlay.
+
+---
+
+## 10. Companion: TrailPin Android tracker
+
+One directory here is not part of the cluster. [`android/`](android/) is a small Android
+app that reports the phone's latitude and longitude to whatever URL you give it — the
+OwnTracks idea with the simplest possible contract:
+
+```
+GET <server URL><API path>?token=<token>&lat=31.326000&lon=75.576000&tid=tp-1a2b3c4d&tst=1762040000
+```
+
+Both `http://` and `https://` work, on any port, with or without a certificate. Build it
+with its own workflow — **Actions → android-apk → artifact `trailpin-debug-apk`** — install
+the APK, then point it at your website or at the receiver bundled in this repository:
+
+```bash
+TRACKER_TOKEN=secret node tools/location-receiver/server.mjs   # dashboard on http://localhost:8080/
+```
+
+Configuration, permissions, battery settings and troubleshooting:
+[`android/README.md`](android/README.md). It does not touch any of the five gates above:
+the Android project is not an npm workspace, and `android-apk.yaml` builds it separately.
 
 ---
 

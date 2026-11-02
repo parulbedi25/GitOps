@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="trailpin_primary">#1B6B4A</color>
+    <color name="trailpin_primary_dark">#124A33</color>
+    <color name="trailpin_outline">#33808080</color>
+    <color name="ic_launcher_background">#0E3B2A</color>
+</resources>

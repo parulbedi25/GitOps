@@ -1,0 +1,15 @@
+{
+  "name": "@shopstack/location-receiver",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dependency-free HTTP receiver + dashboard for the TrailPin Android location tracker.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

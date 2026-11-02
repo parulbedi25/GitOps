@@ -1,0 +1,125 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Android APK — builds the TrailPin tracker and returns an installable APK.
+#
+# The Android app is not part of the ShopStack cluster pipeline: it is a
+# standalone tool that happens to live in this repository, so it has its own
+# workflow and never blocks (or is blocked by) the GitOps gates in ci.yaml.
+#
+#   test      ./gradlew testDebugUnitTest   (URL building: the app's only logic)
+#   package   ./gradlew assembleDebug       → artifact trailpin-debug-apk
+#
+# Download the artifact, copy it to the phone, install it. No Play Store, no
+# account, no build machine of your own required.
+# ─────────────────────────────────────────────────────────────────────────────
+name: android-apk
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-apk.yaml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-apk.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: "17"
+
+jobs:
+  apk:
+    name: test · package APK
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee gradle-test.log
+
+      - name: Build debug APK
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee gradle-assemble.log
+
+      - name: Collect artifact
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/trailpin-debug.apk
+          ls -lh dist/trailpin-debug.apk
+
+      # The artifact is only worth uploading if it is a signed APK that really
+      # asks for location and really allows cleartext http.
+      - name: Verify the APK
+        run: |
+          set -euo pipefail
+          apk=dist/trailpin-debug.apk
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          build_tools="$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)"
+
+          "$build_tools/apksigner" verify --print-certs "$apk" > apk-signature.txt
+          "$build_tools/aapt" dump badging "$apk" > apk-badging.txt 2>/dev/null || true
+
+          manifest="$(find app/build/intermediates -name AndroidManifest.xml -path '*debug*' -print -quit)"
+          grep -q 'ACCESS_FINE_LOCATION' "$manifest"
+          grep -q 'FOREGROUND_SERVICE_LOCATION' "$manifest"
+          grep -q 'android:foregroundServiceType="location"' "$manifest"
+          grep -q 'android:usesCleartextTraffic="true"' "$manifest"
+          grep -q 'android:networkSecurityConfig' "$manifest"
+
+          {
+            echo '### TrailPin debug APK'
+            echo
+            echo '```'
+            grep -E '^package:|^sdkVersion:|^targetSdkVersion:|^uses-permission:' apk-badging.txt | head -20 || true
+            head -2 apk-signature.txt || true
+            ls -lh "$apk" | awk '{print "size: " $5}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::notice title=TrailPin APK::$(grep -m1 '^package:' apk-badging.txt) · $(grep -m1 -i 'verif' apk-signature.txt)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trailpin-debug-apk
+          path: android/dist/trailpin-debug.apk
+          if-no-files-found: error
+
+      # Job logs live behind a host that some networks cannot reach, so the tail
+      # of a failed Gradle run is also emitted as an annotation: `gh api
+      # repos/{owner}/{repo}/check-runs/{id}/annotations` then carries the errors.
+      - name: Surface build errors
+        if: failure()
+        working-directory: android
+        run: |
+          set -uo pipefail
+          log=""
+          for candidate in gradle-test.log gradle-assemble.log; do
+            [ -f "$candidate" ] && log="$candidate"
+          done
+          if [ -z "$log" ]; then
+            echo "::error title=android-apk::failed before Gradle produced output"
+            exit 0
+          fi
+          summary=$(tail -n 120 "$log" | sed 's/%/%25/g' | tr '\n' '~' | sed 's/~/%0A/g')
+          echo "::error title=Gradle failed ($log)::$summary"
