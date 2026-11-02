@@ -68,6 +68,37 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk dist/trailpin-debug.apk
           ls -lh dist/trailpin-debug.apk
 
+      # The artifact is only worth uploading if it is a signed APK that really
+      # asks for location and really allows cleartext http.
+      - name: Verify the APK
+        run: |
+          set -euo pipefail
+          apk=dist/trailpin-debug.apk
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          build_tools="$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)"
+
+          "$build_tools/apksigner" verify --print-certs "$apk" > apk-signature.txt
+          "$build_tools/aapt" dump badging "$apk" > apk-badging.txt 2>/dev/null || true
+
+          manifest="$(find app/build/intermediates -name AndroidManifest.xml -path '*debug*' -print -quit)"
+          grep -q 'ACCESS_FINE_LOCATION' "$manifest"
+          grep -q 'FOREGROUND_SERVICE_LOCATION' "$manifest"
+          grep -q 'android:foregroundServiceType="location"' "$manifest"
+          grep -q 'android:usesCleartextTraffic="true"' "$manifest"
+          grep -q 'android:networkSecurityConfig' "$manifest"
+
+          {
+            echo '### TrailPin debug APK'
+            echo
+            echo '```'
+            grep -E '^package:|^sdkVersion:|^targetSdkVersion:|^uses-permission:' apk-badging.txt | head -20 || true
+            head -2 apk-signature.txt || true
+            ls -lh "$apk" | awk '{print "size: " $5}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::notice title=TrailPin APK::$(grep -m1 '^package:' apk-badging.txt) · signed ($(grep -m1 -i 'verified' apk-signature.txt))"
+
       - uses: actions/upload-artifact@v4
         with:
           name: trailpin-debug-apk
