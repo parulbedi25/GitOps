@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TrailPin</string>
+
+    <!-- Status / tracking -->
+    <string name="section_status">Status</string>
+    <string name="tracking_on">Tracking is ON</string>
+    <string name="tracking_off">Tracking is OFF</string>
+    <string name="status_device_format">Device ID: %1$s</string>
+    <string name="status_endpoint_format">Server: %1$s</string>
+    <string name="status_endpoint_missing">Server: not set</string>
+    <string name="status_background_hint">Tip: allow background location and disable battery optimisation for reliable reporting.</string>
+    <string name="last_result_none">No report sent yet.</string>
+    <string name="last_result_format">Last report (%2$s): %1$s — %3$s</string>
+    <string name="last_result_ok">ok</string>
+    <string name="last_result_failed">failed</string>
+
+    <!-- Server section -->
+    <string name="section_server">Server</string>
+    <string name="hint_url">Server URL</string>
+    <string name="helper_url">http:// and https:// both work. Example: example.com, https://track.example.org, or 192.168.1.10:8080</string>
+    <string name="hint_path">API path</string>
+    <string name="helper_path">Appended to the server URL, e.g. /api/location</string>
+    <string name="hint_token">API token</string>
+    <string name="helper_token">Sent on every request as a query parameter.</string>
+    <string name="hint_token_param">Token parameter name</string>
+    <string name="label_protocol">Protocol</string>
+    <string name="protocol_auto">Auto</string>
+    <string name="protocol_http">HTTP</string>
+    <string name="protocol_https">HTTPS</string>
+    <string name="label_method">Request method</string>
+
+    <!-- Tracking section -->
+    <string name="section_tracking">Tracking</string>
+    <string name="hint_device">Device ID</string>
+    <string name="helper_device">Lets the server tell phones apart (sent as tid).</string>
+    <string name="hint_interval">Interval (seconds)</string>
+    <string name="hint_distance">Distance filter (metres)</string>
+    <string name="helper_distance">0 reports every fix; 25 ignores movement under 25 m.</string>
+    <string name="label_heartbeat">Report on every interval, even when stationary</string>
+    <string name="label_boot">Resume tracking after reboot</string>
+
+    <!-- Request preview -->
+    <string name="section_preview">Request preview</string>
+    <string name="preview_placeholder">Enter a server URL to see the exact request this phone will send.</string>
+
+    <!-- Buttons -->
+    <string name="button_save">Save</string>
+    <string name="button_start">Start tracking</string>
+    <string name="button_stop">Stop tracking</string>
+    <string name="button_send_now">Send test report</string>
+    <string name="button_clear_log">Clear log</string>
+    <string name="button_background">Allow background location</string>
+    <string name="button_battery">Ignore battery optimisation</string>
+
+    <!-- Log -->
+    <string name="section_log">Activity log</string>
+    <string name="log_empty">Nothing here yet. Start tracking and the requests will show up.</string>
+
+    <!-- Notification -->
+    <string name="notification_channel">Location tracking</string>
+    <string name="notification_channel_description">Keeps TrailPin running while it reports your position.</string>
+    <string name="notification_title">TrailPin is tracking</string>
+    <string name="action_stop">Stop</string>
+    <string name="action_send_now">Send now</string>
+
+    <!-- Errors and toasts -->
+    <string name="error_url_required">A server URL is required.</string>
+    <string name="error_url_invalid">That server URL does not look right.</string>
+    <string name="error_token_required">An API token is required.</string>
+    <string name="error_permission_required">Location permission is required to track.</string>
+    <string name="error_no_fix">No location fix yet. Start tracking and wait for the first fix.</string>
+    <string name="toast_saved">Saved.</string>
+    <string name="toast_sending">Sending…</string>
+    <string name="toast_test_sent">Report accepted by the server. See the log.</string>
+    <string name="toast_test_failed">Report failed. See the log.</string>
+    <string name="toast_log_cleared">Log cleared.</string>
+    <string name="toast_background_granted">Background location is allowed.</string>
+    <string name="toast_background_hint">Choose “Allow all the time” in the app’s location permission.</string>
+    <string name="toast_background_not_needed">Not needed on this Android version.</string>
+    <string name="toast_battery_already">Battery optimisation is already off for TrailPin.</string>
+    <string name="toast_open_settings_failed">Could not open the settings screen.</string>
+</resources>

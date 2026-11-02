@@ -56,6 +56,11 @@ jobs:
       - name: Test
         run: npm test
 
+      # The TrailPin receiver (tools/location-receiver) is not an npm workspace:
+      # its tests run on the Node built-in runner, without dependencies.
+      - name: Receiver tests
+        run: npm run test:receiver
+
   manifests:
     name: render · lint manifests
     runs-on: ubuntu-24.04

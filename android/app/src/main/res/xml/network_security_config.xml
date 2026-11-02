@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      TrailPin reports to whatever host the user types in, and a large part of
+      the point is that a plain-HTTP endpoint on a LAN or a VPS without a
+      certificate must work. Cleartext is therefore allowed for every host.
+
+      System CAs are used for HTTPS; user-installed CAs are trusted as well, so a
+      self-signed certificate the user deliberately installed also works.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

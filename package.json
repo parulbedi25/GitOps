@@ -18,6 +18,7 @@
     "start:payments": "npm run start --workspace @shopstack/payments-service",
     "start:checkout": "npm run start --workspace @shopstack/checkout-service",
     "start:storefront": "npm run start --workspace @shopstack/storefront",
+    "start:receiver": "node tools/location-receiver/server.mjs",
     "test": "npm run test --workspaces --if-present",
     "test:cov": "npm run test:cov --workspaces --if-present",
     "lint": "eslint . --max-warnings=0",
@@ -25,7 +26,8 @@
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "validate": "npm run lint && npm test",
-    "smoke": "node scripts/smoke-local.mjs"
+    "smoke": "node scripts/smoke-local.mjs",
+    "test:receiver": "npm test --prefix tools/location-receiver"
   },
   "devDependencies": {
     "eslint": "^9.12.0",
