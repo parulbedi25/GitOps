@@ -163,9 +163,44 @@ From a shell, the same thing:
 curl "http://localhost:8080/api/location?token=secret&lat=31.326&lon=75.576&tid=curl"
 ```
 
-On a real website you need a route that reads `token`, `lat` and `lon` and stores
-them. Any language, three lines of code. Check the token with a constant-time
-comparison, drop reports with impossible coordinates, and rate-limit the endpoint.
+### On your real website
+
+You need one route that reads `token`, `lat` and `lon` and stores them. Express:
+
+```js
+app.get('/api/location', (req, res) => {
+  if (req.query.token !== process.env.TRACKER_TOKEN) {
+    return res.status(401).json({ ok: false });
+  }
+  const lat = Number(req.query.lat);
+  const lon = Number(req.query.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return res.status(400).json({ ok: false });
+  }
+  db.insert({ lat, lon, device: req.query.tid, seen: new Date() });
+  res.json({ ok: true });
+});
+```
+
+PHP:
+
+```php
+<?php
+if (($_GET['token'] ?? '') !== getenv('TRACKER_TOKEN')) { http_response_code(401); exit; }
+$lat = (float) ($_GET['lat'] ?? NAN);
+$lon = (float) ($_GET['lon'] ?? NAN);
+if (!is_finite($lat) || !is_finite($lon)) { http_response_code(400); exit; }
+file_put_contents('/var/lib/trailpin.jsonl',
+  json_encode(['lat' => $lat, 'lon' => $lon, 'tid' => $_GET['tid'] ?? null]) . "\n",
+  FILE_APPEND | LOCK_EX);
+header('Content-Type: application/json');
+echo '{"ok":true}';
+```
+
+Three rules for that route, whatever the language: compare the token, reject
+impossible coordinates, and rate-limit it. If your site redirects `http` to
+`https`, set the app's protocol to **HTTPS** — `HttpURLConnection` does not follow
+a redirect that changes scheme.
 
 ---
 

@@ -52,7 +52,6 @@ class TrackerService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private val sender = Executors.newSingleThreadExecutor()
     private val sendInFlight = AtomicBoolean(false)
-    private val listening = AtomicBoolean(false)
 
     @Volatile
     private var lastKnown: Location? = null
@@ -164,12 +163,15 @@ class TrackerService : Service() {
             PackageManager.PERMISSION_GRANTED
 
     private fun startListening() {
-        if (listening.getAndSet(true)) return
         if (!hasLocationPermission()) {
             setStatus("Location permission is missing")
             LogStore.append(this, "not listening: location permission is not granted")
             return
         }
+
+        // Pressing Start again after editing the interval or the distance filter
+        // must apply the new values, so any previous request is replaced.
+        runCatching { locationManager.removeUpdates(locationListener) }
 
         val intervalMs = config.effectiveIntervalSeconds() * 1000L
         val distanceM = config.effectiveDistanceMeters()
@@ -338,7 +340,6 @@ class TrackerService : Service() {
 
     private fun stopTracking() {
         configStore.trackingEnabled = false
-        listening.set(false)
         handler.removeCallbacksAndMessages(null)
         runCatching { locationManager.removeUpdates(locationListener) }
         cancelAlarm()

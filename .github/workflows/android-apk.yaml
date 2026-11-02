@@ -97,7 +97,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "::notice title=TrailPin APK::$(grep -m1 '^package:' apk-badging.txt) · signed ($(grep -m1 -i 'verified' apk-signature.txt))"
+          echo "::notice title=TrailPin APK::$(grep -m1 '^package:' apk-badging.txt) · $(grep -m1 -i 'verif' apk-signature.txt)"
 
       - uses: actions/upload-artifact@v4
         with:
