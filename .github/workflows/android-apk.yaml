@@ -52,10 +52,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests
-        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee gradle-test.log
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee gradle-assemble.log
 
       - name: Collect artifact
         run: |
@@ -69,3 +73,22 @@ jobs:
           name: trailpin-debug-apk
           path: android/dist/trailpin-debug.apk
           if-no-files-found: error
+
+      # Job logs live behind a host that some networks cannot reach, so the tail
+      # of a failed Gradle run is also emitted as an annotation: `gh api
+      # repos/{owner}/{repo}/check-runs/{id}/annotations` then carries the errors.
+      - name: Surface build errors
+        if: failure()
+        working-directory: android
+        run: |
+          set -uo pipefail
+          log=""
+          for candidate in gradle-test.log gradle-assemble.log; do
+            [ -f "$candidate" ] && log="$candidate"
+          done
+          if [ -z "$log" ]; then
+            echo "::error title=android-apk::failed before Gradle produced output"
+            exit 0
+          fi
+          summary=$(tail -n 120 "$log" | sed 's/%/%25/g' | tr '\n' '~' | sed 's/~/%0A/g')
+          echo "::error title=Gradle failed ($log)::$summary"

@@ -27,8 +27,7 @@ android {
         versionName = "1.0.0"
 
         // TrailPin talks to whatever host the user types in, so no endpoint is
-        // baked in here. Everything is runtime configuration.
-        resValue("string", "tracker_version", versionName)
+        // baked in here: the server URL, API path and token are runtime state.
     }
 
     signingConfigs {
